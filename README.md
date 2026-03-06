@@ -4,8 +4,8 @@ A lightweight, client-side web application for exploring and filtering log files
 
 ## Links
 
-🌐 **[Try LogSieve Online](https://notesofcliff.github.io/logsieve/)** - Use the hosted version  
-📦 **[GitHub Repository](https://github.com/notesofcliff/logsieve)** - View source code  
+🌐 **[Try LogSieve Online](https://McIndi.github.io/logsieve/)** - Use the hosted version  
+📦 **[GitHub Repository](https://github.com/McIndi/logsieve)** - View source code  
 💖 **[Support Development](https://github.com/sponsors/notesofcliff)** - Sponsor on GitHub
 
 ## Features
@@ -266,7 +266,7 @@ LogSieve provides a **Summary Statistics** panel at the top of the Results secti
 - The summary reflects only the filtered and extracted results you are currently viewing.
 - If you change your filters or run new extractors and want the summary to update, simply collapse and re-expand the Summary Statistics section to recompute stats for the latest results.
 - All field detection and statistics are best-effort; some field types or values may be interpreted incorrectly depending on your log format.
-- If you notice a field is interpreted incorrectly, please [open a GitHub issue](https://github.com/notesofcliff/logsieve/issues) describing the problem!
+- If you notice a field is interpreted incorrectly, please [open a GitHub issue](https://github.com/McIndi/logsieve/issues) describing the problem!
 
 **What it shows:**
 - Detected field types (text, number, date, array, etc.)
