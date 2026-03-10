@@ -778,6 +778,31 @@ canvas {
   font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.pipeline-alert {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.pipeline-alert.error {
+  border-color: var(--err);
+}
+
+.pipeline-alert .title {
+  font-weight: 700;
+  color: var(--err);
+  margin-bottom: 0.25rem;
+}
+
+.pipeline-alert ul {
+  margin: 0.25rem 0 0 1rem;
+  padding: 0;
+}
+
 :root.dark-theme .explainer code {
   border: 1px solid var(--border);
 }

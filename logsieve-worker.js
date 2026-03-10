@@ -9,6 +9,7 @@ importScripts('shared.js');
 
 let rows = [];        // Full dataset
 let view = [];        // Filtered/sorted view
+let sourceRows = [];  // Immutable parsed baseline
 let fieldNames = new Set();  // Track all extracted field names
 let currentFilterConfig = null;
 let appliedFilterConfig = null;
@@ -44,7 +45,65 @@ function resetParserState() {
     startTime: performance.now()
   };
   rows = [];
+  sourceRows = [];
   fieldNames.clear();
+}
+
+function cloneRow(row) {
+  const clonedFields = {};
+  if (row.fields && typeof row.fields === 'object') {
+    for (const [k, v] of Object.entries(row.fields)) {
+      if (Array.isArray(v)) clonedFields[k] = v.slice();
+      else if (v && typeof v === 'object') clonedFields[k] = JSON.parse(JSON.stringify(v));
+      else clonedFields[k] = v;
+    }
+  }
+  return {
+    id: row.id,
+    ts: row.ts || '',
+    level: row.level || '',
+    message: row.message || '',
+    raw: row.raw || '',
+    fields: clonedFields,
+    _lc: row._lc || ''
+  };
+}
+
+function cloneRows(rowsIn) {
+  return (rowsIn || []).map(cloneRow);
+}
+
+function rebuildFieldNamesFromRows(dataset) {
+  fieldNames.clear();
+  for (const row of dataset || []) {
+    for (const key of Object.keys(row.fields || {})) {
+      fieldNames.add(key);
+    }
+  }
+}
+
+function sortRows(dataset, sortConfig = { field: 'id', order: 'desc' }, progressCallback = null) {
+  if (progressCallback) progressCallback(70, 'Sorting results...');
+  const sort = sortConfig.field;
+  const ord = sortConfig.order;
+  return dataset.slice().sort((a, b) => {
+    let A, B;
+
+    if (sort && sort.startsWith('field:')) {
+      const fieldName = sort.substring(6);
+      const aVal = a.fields?.[fieldName];
+      const bVal = b.fields?.[fieldName];
+      A = Array.isArray(aVal) ? (aVal.length > 0 ? aVal[0] : '') : (aVal || '');
+      B = Array.isArray(bVal) ? (bVal.length > 0 ? bVal[0] : '') : (bVal || '');
+    } else {
+      A = a[sort] || '';
+      B = b[sort] || '';
+    }
+
+    if (A < B) return ord === 'asc' ? -1 : 1;
+    if (A > B) return ord === 'asc' ? 1 : -1;
+    return 0;
+  });
 }
 
 /**
@@ -393,35 +452,63 @@ function applyFilters(sortConfig, progressCallback = null) {
     v = applyFilterConfig(v, appliedAdvancedQuery, progressCallback);
   }
 
-  // Sort results
-  if (progressCallback) progressCallback(70, 'Sorting results...');
-  const sort = sortConfig.field;
-  const ord = sortConfig.order;
-  v = v.slice().sort((a, b) => {
-    let A, B;
-
-    // Check if sorting by a field column
-    if (sort.startsWith('field:')) {
-      const fieldName = sort.substring(6);
-      const aVal = a.fields?.[fieldName];
-      const bVal = b.fields?.[fieldName];
-
-      // Handle arrays - use first element or stringify
-      A = Array.isArray(aVal) ? (aVal.length > 0 ? aVal[0] : '') : (aVal || '');
-      B = Array.isArray(bVal) ? (bVal.length > 0 ? bVal[0] : '') : (bVal || '');
-    } else {
-      A = a[sort] || "";
-      B = b[sort] || "";
-    }
-
-    if (A < B) return ord === 'asc' ? -1 : 1;
-    if (A > B) return ord === 'asc' ? 1 : -1;
-    return 0;
-  });
+  v = sortRows(v, sortConfig, progressCallback);
 
   view = v;
   if (progressCallback) progressCallback(100, 'Filtering complete');
   return view;
+}
+
+function runPipelineSteps(steps = [], sortConfig = { field: 'id', order: 'desc' }, runtime = {}, progressCallback = null) {
+  rows = cloneRows(sourceRows);
+  rebuildFieldNamesFromRows(rows);
+
+  let current = rows;
+  const total = Math.max(1, steps.length);
+  const transformResults = { total: 0, changed: 0, failed: 0, byTransform: {}, errorSamples: [] };
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (!step || step.enabled === false) continue;
+
+    if (progressCallback) {
+      const p = Math.round((i / total) * 100);
+      progressCallback(Math.min(95, p), `Running step ${i + 1}/${steps.length}: ${step.label || step.type}`);
+    }
+
+    if (step.type === 'filter-rule' && step.rule) {
+      current = current.filter(row => evaluateRule(row, step.rule));
+      continue;
+    }
+
+    if (step.type === 'advanced-query' && step.queryText) {
+      const compiled = parseAdvancedQuery(step.queryText);
+      if (compiled) current = applyFilterConfig(current, compiled);
+      continue;
+    }
+
+    if (step.type === 'extractor' && step.extractor) {
+      runSingleExtractor(step.extractor.pattern, current, step.mergeStrategy || 'last-wins');
+      continue;
+    }
+
+    if (step.type === 'transform' && step.transform) {
+      const one = runMultipleTransforms([step.transform], current, runtime || {});
+      transformResults.total += one.total || 0;
+      transformResults.changed += one.changed || 0;
+      transformResults.failed += one.failed || 0;
+      if (one.byTransform) Object.assign(transformResults.byTransform, one.byTransform);
+      if (Array.isArray(one.errorSamples) && one.errorSamples.length) {
+        transformResults.errorSamples.push(...one.errorSamples);
+      }
+      continue;
+    }
+  }
+
+  view = sortRows(current, sortConfig, progressCallback);
+  FieldRegistry.updateFromDataset(rows);
+  if (progressCallback) progressCallback(100, 'Pipeline complete');
+  return { view, transformResults };
 }
 
 /**
@@ -496,6 +583,10 @@ if (isWorker) {
             parseLogChunk('', true);
           }
 
+          sourceRows = cloneRows(rows);
+          rows = cloneRows(sourceRows);
+          view = rows.slice();
+          rebuildFieldNamesFromRows(rows);
           FieldRegistry.updateFromDataset(rows);
 
           self.postMessage({
@@ -543,7 +634,10 @@ if (isWorker) {
               break;
           }
 
-          rows = parsedRows;
+          sourceRows = cloneRows(parsedRows);
+          rows = cloneRows(sourceRows);
+          view = rows.slice();
+          rebuildFieldNamesFromRows(rows);
           FieldRegistry.updateFromDataset(rows);
 
           self.postMessage({
@@ -584,7 +678,13 @@ if (isWorker) {
         }
 
         case 'RUN_EXTRACTORS': {
-          const { extractors, scope } = data;
+          const {
+            extractors,
+            transforms = [],
+            scope,
+            mergeStrategy = 'last-wins',
+            transformRuntime = {}
+          } = data;
           const targetRows = scope === 'filtered' ? view : rows;
           const progressCallback = (percent, message) => {
             self.postMessage({
@@ -593,7 +693,8 @@ if (isWorker) {
               id
             });
           };
-          const results = runMultipleExtractors(extractors, targetRows, progressCallback);
+          const results = runMultipleExtractors(extractors, targetRows, mergeStrategy, progressCallback);
+          const transformResults = runMultipleTransforms(transforms, targetRows, transformRuntime, progressCallback);
 
           // Update field registry after extraction
           FieldRegistry.updateFromDataset(rows);
@@ -602,7 +703,35 @@ if (isWorker) {
             type: 'EXTRACTORS_COMPLETE',
             data: {
               results,
+              transformResults,
               newFieldNames: [...fieldNames],
+              fieldRegistry: FieldRegistry.serialize()
+            },
+            id
+          });
+          break;
+        }
+
+        case 'RUN_PIPELINE': {
+          const { steps = [], sort = { field: 'id', order: 'desc' }, transformRuntime = {} } = data;
+          const progressCallback = (percent, message) => {
+            self.postMessage({
+              type: 'PROGRESS',
+              data: { percent, message, operation: 'pipeline' },
+              id
+            });
+          };
+
+          const pipelineResults = runPipelineSteps(steps, sort, transformRuntime, progressCallback);
+          const stats = computeStats();
+
+          self.postMessage({
+            type: 'PIPELINE_COMPLETE',
+            data: {
+              viewLength: view.length,
+              stats,
+              transformResults: pipelineResults.transformResults,
+              fieldNames: [...fieldNames],
               fieldRegistry: FieldRegistry.serialize()
             },
             id

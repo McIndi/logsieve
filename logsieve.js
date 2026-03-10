@@ -65,6 +65,8 @@ const Storage = {
     EXTRACTORS: 'logsieve-extractors',
     FILTERS: 'logsieve-filters',
     ACTIVE_EXTRACTORS: 'logsieve-active-extractors',
+    TRANSFORMS: 'logsieve-transforms',
+    ACTIVE_TRANSFORMS: 'logsieve-active-transforms',
     PREFS: 'logsieve-prefs',
     THEME: 'logsieve-theme'
   },
@@ -147,6 +149,57 @@ const Storage = {
     localStorage.setItem(this.KEYS.ACTIVE_EXTRACTORS, JSON.stringify(validIds));
   },
 
+  getTransforms() {
+    try {
+      const data = localStorage.getItem(this.KEYS.TRANSFORMS);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error('Failed to load transforms:', e);
+      return [];
+    }
+  },
+
+  saveTransform(transform) {
+    const transforms = this.getTransforms();
+
+    if (!transform.id) {
+      transform.id = generateUUID();
+      transform.created = new Date().toISOString();
+    }
+    transform.updated = new Date().toISOString();
+
+    const idx = transforms.findIndex(t => t.id === transform.id);
+    if (idx >= 0) transforms[idx] = transform;
+    else transforms.push(transform);
+
+    localStorage.setItem(this.KEYS.TRANSFORMS, JSON.stringify(transforms));
+    return transform;
+  },
+
+  deleteTransform(id) {
+    const transforms = this.getTransforms().filter(t => t.id !== id);
+    localStorage.setItem(this.KEYS.TRANSFORMS, JSON.stringify(transforms));
+    const active = this.getActiveTransforms().filter(tid => tid !== id);
+    this.setActiveTransforms(active);
+  },
+
+  getActiveTransforms() {
+    try {
+      const data = localStorage.getItem(this.KEYS.ACTIVE_TRANSFORMS);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error('Failed to load active transforms:', e);
+      return [];
+    }
+  },
+
+  setActiveTransforms(ids) {
+    const uniqueIds = [...new Set(ids)];
+    const validTransforms = this.getTransforms();
+    const validIds = uniqueIds.filter(id => validTransforms.some(t => t.id === id));
+    localStorage.setItem(this.KEYS.ACTIVE_TRANSFORMS, JSON.stringify(validIds));
+  },
+
   /**
    * Get all saved filters
    * @returns {Array<Object>} - Array of filter objects
@@ -204,11 +257,12 @@ const Storage = {
       const data = localStorage.getItem(this.KEYS.PREFS);
       return data ? JSON.parse(data) : {
         defaultPageSize: 50,
-        extractorMergeStrategy: 'last-wins'
+        extractorMergeStrategy: 'last-wins',
+        unsafeJsTransforms: false
       };
     } catch (e) {
       console.error('Failed to load preferences:', e);
-      return { defaultPageSize: 50, extractorMergeStrategy: 'last-wins' };
+      return { defaultPageSize: 50, extractorMergeStrategy: 'last-wins', unsafeJsTransforms: false };
     }
   },
 
@@ -228,7 +282,9 @@ const Storage = {
     return {
       extractors: this.getExtractors(),
       filters: this.getFilters(),
+      transforms: this.getTransforms(),
       activeExtractors: this.getActiveExtractors(),
+      activeTransforms: this.getActiveTransforms(),
       prefs: this.getPrefs(),
       exportDate: new Date().toISOString(),
       version: '1.0'
@@ -242,7 +298,7 @@ const Storage = {
    * @returns {Object} - Import results
    */
   importAll(data, merge = true) {
-    const results = { extractors: 0, filters: 0, errors: [] };
+    const results = { extractors: 0, filters: 0, transforms: 0, errors: [] };
 
     try {
       if (data.extractors) {
@@ -264,6 +320,20 @@ const Storage = {
         });
         localStorage.setItem(this.KEYS.FILTERS, JSON.stringify([...existing, ...imported]));
         results.filters = imported.length;
+      }
+
+      if (data.transforms) {
+        const existing = merge ? this.getTransforms() : [];
+        const imported = data.transforms.map(t => {
+          if (merge) t.id = generateUUID();
+          return t;
+        });
+        localStorage.setItem(this.KEYS.TRANSFORMS, JSON.stringify([...existing, ...imported]));
+        results.transforms = imported.length;
+      }
+
+      if (data.activeTransforms && !merge) {
+        localStorage.setItem(this.KEYS.ACTIVE_TRANSFORMS, JSON.stringify(data.activeTransforms));
       }
 
       if (data.prefs && !merge) {
@@ -295,6 +365,8 @@ let appliedAdvancedQuery = null;
 // Detected user's timezone name (IANA). Set at startup for consistent rendering
 const userTimeZone = (Intl && Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Local';
 let sortByIdOrder = 'asc';
+let editingTransformId = null;
+let pipelineOrder = [];
 
 // ---------- Worker Communication ----------
 
@@ -347,6 +419,8 @@ function handleWorkerMessage(e) {
       if (uploadSection) uploadSection.classList.remove('active');
       // Set Results nav active for clarity
       navigateToSection('results');
+      renderPipelineList();
+      renderTransformErrorAlert(null);
       applyFilters();
       break;
 
@@ -356,6 +430,26 @@ function handleWorkerMessage(e) {
       totalRows = data.viewLength || 0; // Store total rows for pagination
       $("#filterProgress").style.display = 'none';
       $("#savedFilterProgress").style.display = 'none';
+      render();
+      break;
+
+    case 'PIPELINE_COMPLETE':
+      fieldNames = new Set(data.fieldNames || []);
+      if (data.fieldRegistry) FieldRegistry.deserialize(data.fieldRegistry);
+      initializeVisibleColumnsFromPrefs();
+      initializeColumnOrderFromPrefs();
+      mergeNewFieldsIntoOrder();
+      renderColumnsPanel();
+      page = 1;
+      totalRows = data.viewLength || 0;
+      $("#filterProgress").style.display = 'none';
+      const pipelineProgress = $("#pipelineProgress");
+      if (pipelineProgress) pipelineProgress.style.display = 'none';
+      $("#savedFilterProgress").style.display = 'none';
+      updateSortOptions();
+      renderQueryFields();
+      renderPipelineList();
+      renderTransformErrorAlert(data.transformResults || null);
       render();
       break;
 
@@ -369,10 +463,14 @@ function handleWorkerMessage(e) {
       initializeColumnOrderFromPrefs();
       mergeNewFieldsIntoOrder();
       renderColumnsPanel();
-      $("#extractInfo").textContent = `Applied extractors · ${fmt(data.results.total)} matches`;
+      const extractHits = data.results?.total || 0;
+      const transformChanged = data.transformResults?.changed || 0;
+      $("#extractInfo").textContent = `Extractors: ${fmt(extractHits)} matches · Transforms: ${fmt(transformChanged)} changed`;
       $("#extractorProgress").style.display = 'none';
       updateSortOptions();
       renderQueryFields();
+      renderPipelineList();
+      renderTransformErrorAlert(data.transformResults || null);
       applyFilters();
       break;
 
@@ -421,6 +519,15 @@ function handleWorkerMessage(e) {
         container.style.display = 'block';
         fill.style.width = percent + '%';
         text.textContent = message;
+      } else if (operation === 'pipeline') {
+        const container = $("#pipelineProgress");
+        const fill = $("#pipelineProgressFill");
+        const text = $("#pipelineProgressText");
+        if (container && fill && text) {
+          container.style.display = 'block';
+          fill.style.width = percent + '%';
+          text.textContent = message;
+        }
       } else if (operation === 'saved-filtering') {
         const container = $("#savedFilterProgress");
         const fill = $("#savedFilterProgressFill");
@@ -446,6 +553,28 @@ function handleWorkerMessage(e) {
     default:
       console.warn('Unknown worker message type:', type);
   }
+}
+
+function renderTransformErrorAlert(transformResults) {
+  const el = $("#transformErrorAlert");
+  if (!el) return;
+
+  const failed = transformResults?.failed || 0;
+  if (!failed) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  const samples = Array.isArray(transformResults.errorSamples) ? transformResults.errorSamples.slice(0, 5) : [];
+  const sampleHtml = samples.length
+    ? `<ul>${samples.map(s => `<li>${escapeHtml(s.transformName || s.transformId || 'Transform')}${s.rowId ? ` (row ${escapeHtml(String(s.rowId))})` : ''}: ${escapeHtml(s.error || 'Unknown error')}</li>`).join('')}</ul>`
+    : '';
+
+  el.innerHTML = `<div class="title">Transform errors detected</div>
+    <div>${fmt(failed)} transformation failure(s) occurred during the last run.</div>
+    ${sampleHtml}`;
+  el.style.display = 'block';
 }
 
 /**
@@ -513,26 +642,215 @@ function migrateAllFilters() {
   if (migrated > 0) console.log(`Migrated ${migrated} filters to v2 format`);
 }
 
+function getPipelineOrderFromPrefs() {
+  const prefs = Storage.getPrefs() || {};
+  pipelineOrder = Array.isArray(prefs.pipelineOrder) ? prefs.pipelineOrder.slice() : [];
+  return pipelineOrder;
+}
 
-/**
- * Apply all active filters to the dataset
- */
-function applyFilters(operation = 'filtering') {
-  // Builder rules are stored in currentFilterConfig
+function savePipelineOrderToPrefs() {
+  const prefs = Storage.getPrefs() || {};
+  prefs.pipelineOrder = pipelineOrder.slice();
+  Storage.savePrefs(prefs);
+}
 
+function buildPipelineSteps() {
+  const steps = [];
+  const prefs = Storage.getPrefs() || {};
+
+  const rules = currentFilterConfig?.rules || [];
+  for (const rule of rules) {
+    const label = `Filter: ${rule.field} ${rule.operator}${rule.value ? ' ' + rule.value : ''}`;
+    steps.push({
+      key: `filter-rule:${rule.id}`,
+      type: 'filter-rule',
+      label,
+      enabled: rule.enabled !== false,
+      rule
+    });
+  }
+
+  const advancedQuery = $("#textQuery")?.value.trim();
+  if (advancedQuery) {
+    steps.push({
+      key: 'filter-advanced',
+      type: 'advanced-query',
+      label: `Filter: Advanced Query`,
+      enabled: true,
+      queryText: advancedQuery
+    });
+  }
+
+  const activeExtractorIds = Storage.getActiveExtractors();
+  const extractorMap = new Map(Storage.getExtractors().map(e => [e.id, e]));
+  for (const id of activeExtractorIds) {
+    const ext = extractorMap.get(id);
+    if (!ext) continue;
+    steps.push({
+      key: `extractor:${id}`,
+      type: 'extractor',
+      label: `Extractor: ${ext.name}`,
+      enabled: ext.enabled !== false,
+      mergeStrategy: prefs.extractorMergeStrategy || 'last-wins',
+      extractor: ext
+    });
+  }
+
+  const activeTransformIds = Storage.getActiveTransforms();
+  const transformMap = new Map(Storage.getTransforms().map(t => [t.id, t]));
+  for (const id of activeTransformIds) {
+    const t = transformMap.get(id);
+    if (!t) continue;
+    steps.push({
+      key: `transform:${id}`,
+      type: 'transform',
+      label: `Transform: ${t.name || t.operation}`,
+      enabled: t.enabled !== false,
+      transform: t
+    });
+  }
+
+  const order = getPipelineOrderFromPrefs();
+  const byKey = new Map(steps.map(s => [s.key, s]));
+  const ordered = [];
+
+  for (const key of order) {
+    const step = byKey.get(key);
+    if (step) {
+      ordered.push(step);
+      byKey.delete(key);
+    }
+  }
+  for (const step of byKey.values()) ordered.push(step);
+
+  pipelineOrder = ordered.map(s => s.key);
+  savePipelineOrderToPrefs();
+  return ordered;
+}
+
+function renderPipelineList() {
+  const list = $("#pipelineList");
+  if (!list) return;
+
+  const steps = buildPipelineSteps();
+  if (steps.length === 0) {
+    list.innerHTML = '<div class="empty-state">No pipeline steps yet. Add filter rules, extractors, or transformations.</div>';
+    return;
+  }
+
+  list.innerHTML = steps.map(step => {
+    const kind = step.type === 'filter-rule' || step.type === 'advanced-query' ? 'Filter' : (step.type === 'extractor' ? 'Extractor' : 'Transform');
+    return `
+      <div class="library-item" data-step-key="${step.key}" draggable="true">
+        <input type="checkbox" class="pipeline-toggle" data-step-key="${step.key}" ${step.enabled ? 'checked' : ''} />
+        <div class="library-item-content">
+          <div class="library-item-title">${escapeHtml(kind)}</div>
+          <div class="library-item-pattern">${escapeHtml(step.label)}</div>
+        </div>
+        <div class="library-item-actions"><span class="drag-handle" style="cursor:grab; color:var(--muted)">≡</span></div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.pipeline-toggle').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const key = e.target.dataset.stepKey;
+      const checked = e.target.checked;
+      if (key.startsWith('filter-rule:')) {
+        const id = key.split(':')[1];
+        const rule = (currentFilterConfig?.rules || []).find(r => r.id === id);
+        if (rule) rule.enabled = checked;
+      } else if (key.startsWith('extractor:')) {
+        const id = key.split(':')[1];
+        const active = Storage.getActiveExtractors();
+        if (checked && !active.includes(id)) active.push(id);
+        if (!checked) Storage.setActiveExtractors(active.filter(x => x !== id));
+        else Storage.setActiveExtractors(active);
+        renderExtractorList();
+      } else if (key.startsWith('transform:')) {
+        const id = key.split(':')[1];
+        const active = Storage.getActiveTransforms();
+        if (checked && !active.includes(id)) active.push(id);
+        if (!checked) Storage.setActiveTransforms(active.filter(x => x !== id));
+        else Storage.setActiveTransforms(active);
+        renderTransformationList();
+      }
+      updateExtractorInfo();
+      renderPipelineList();
+    });
+  });
+
+  let dragSrcEl = null;
+  list.addEventListener('dragstart', (e) => {
+    const el = e.target.closest('.library-item');
+    if (!el) return;
+    dragSrcEl = el;
+    el.classList.add('dragging');
+  });
+
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const afterEl = getDragAfterElement(list, e.clientY);
+    if (!dragSrcEl) return;
+    if (!afterEl) list.appendChild(dragSrcEl);
+    else list.insertBefore(dragSrcEl, afterEl);
+  });
+
+  list.addEventListener('dragend', () => {
+    if (dragSrcEl) dragSrcEl.classList.remove('dragging');
+    pipelineOrder = [...list.querySelectorAll('.library-item')].map(n => n.dataset.stepKey);
+    savePipelineOrderToPrefs();
+    dragSrcEl = null;
+  });
+
+  function getDragAfterElement(container, y) {
+    const els = [...container.querySelectorAll('.library-item:not(.dragging)')];
+    let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+    for (const child of els) {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) closest = { offset, element: child };
+    }
+    return closest.element;
+  }
+}
+
+function runPipeline(operation = 'pipeline') {
   const sortConfig = {
     field: $("#sort").value,
     order: $("#order").value
   };
 
-  const filterConfig = {
-    builder: appliedFilterConfig,
-    advanced: appliedAdvancedQuery,
-    sort: sortConfig,
-    operation
-  };
+  const prefs = Storage.getPrefs();
+  const steps = buildPipelineSteps();
 
-  sendToWorker('APPLY_FILTERS', filterConfig);
+  const progress = $("#pipelineProgress");
+  const progressFill = $("#pipelineProgressFill");
+  const progressText = $("#pipelineProgressText");
+  if (progress && progressFill && progressText) {
+    progress.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressText.textContent = 'Running pipeline...';
+  }
+
+  sendToWorker('RUN_PIPELINE', {
+    operation,
+    steps,
+    sort: sortConfig,
+    transformRuntime: {
+      unsafeMode: !!prefs.unsafeJsTransforms,
+      maxTotalMs: 2500,
+      maxOutputLength: 100000
+    }
+  });
+}
+
+
+/**
+ * Apply all active filters to the dataset
+ */
+function applyFilters(operation = 'filtering') {
+  runPipeline(operation);
 }
 
 /**
@@ -920,30 +1238,7 @@ function renderColumnsPanel() {
  * Run active extractors from storage
  */
 function runActiveExtractors() {
-  const activeIds = Storage.getActiveExtractors();
-  console.log('Active extractor IDs:', activeIds);
-
-  if (activeIds.length === 0) {
-    $("#extractInfo").textContent = 'No active extractors';
-    return;
-  }
-
-  const allExtractors = Storage.getExtractors();
-  const activeExtractors = allExtractors.filter(e => activeIds.includes(e.id));
-
-  console.log('Found active extractors:', activeExtractors.length, 'of', allExtractors.length, 'total');
-  console.log('Active extractors:', activeExtractors.map(e => ({ id: e.id, name: e.name, enabled: e.enabled })));
-
-  if (activeExtractors.length === 0) {
-    $("#extractInfo").textContent = 'No active extractors found';
-    return;
-  }
-
-  const scope = $("#extractScope").value === 'filtered' ? 'filtered' : 'all';
-
-  $("#extractInfo").textContent = 'Running extractors…';
-  $("#extractorProgress").style.display = 'block';
-  sendToWorker('RUN_EXTRACTORS', { extractors: activeExtractors, scope });
+  runPipeline('pipeline');
 }
 
 function renderQueryFields() {
@@ -1154,8 +1449,8 @@ async function importLibrary(file) {
     const data = JSON.parse(text);
 
     // Validate data structure
-    if (!data.extractors && !data.filters) {
-      alert('Invalid library file: no extractors or filters found.');
+    if (!data.extractors && !data.filters && !data.transforms) {
+      alert('Invalid library file: no extractors, filters, or transforms found.');
       return;
     }
 
@@ -1164,7 +1459,7 @@ async function importLibrary(file) {
       'Import mode:\n\n' +
       'OK = Merge with existing (keep current items)\n' +
       'Cancel = Replace existing (delete current items)\n\n' +
-      `Importing: ${data.extractors?.length || 0} extractors, ${data.filters?.length || 0} filters`
+      `Importing: ${data.extractors?.length || 0} extractors, ${data.filters?.length || 0} filters, ${data.transforms?.length || 0} transforms`
     );
 
     const results = Storage.importAll(data, merge);
@@ -1172,11 +1467,12 @@ async function importLibrary(file) {
     if (results.errors.length > 0) {
       alert('Import completed with errors:\n' + results.errors.join('\n'));
     } else {
-      alert(`Import successful!\n\nImported:\n- ${results.extractors} extractors\n- ${results.filters} filters`);
+      alert(`Import successful!\n\nImported:\n- ${results.extractors} extractors\n- ${results.filters} filters\n- ${results.transforms || 0} transforms`);
     }
 
     // Refresh UI
     renderExtractorList();
+    renderTransformationList();
     renderFilterList();
     updateExtractorInfo();
     updateFilterLibInfo();
@@ -1225,6 +1521,161 @@ function renderExtractorList() {
   container.querySelectorAll('.delete-extractor').forEach(btn => {
     btn.addEventListener('click', handleDeleteExtractor);
   });
+  renderPipelineList();
+}
+
+function transformationPreview(t) {
+  const target = t.targetField && t.targetField !== t.sourceField ? ` → ${t.targetField}` : '';
+  if (t.operation === 'json-parse') {
+    return `${t.sourceField} | json.parse${t.path ? ' path=' + t.path : ''}${target}`;
+  }
+  if (t.operation === 'xml-tag') {
+    return `${t.sourceField} | xml tag=${t.tag || t.path || ''}${target}`;
+  }
+  if (t.operation === 'url-decode') {
+    return `${t.sourceField} | url decode${target}`;
+  }
+  if (t.operation === 'url-encode') {
+    return `${t.sourceField} | url encode${target}`;
+  }
+  if (t.operation === 'js') {
+    return `${t.sourceField} | js:${(t.expression || '').slice(0, 80)}${target}`;
+  }
+  return `${t.sourceField} | ${t.operation}${target}`;
+}
+
+function renderTransformationList() {
+  const transforms = Storage.getTransforms();
+  const activeIds = Storage.getActiveTransforms();
+  const container = $("#transformList");
+  if (!container) return;
+
+  if (transforms.length === 0) {
+    container.innerHTML = '<div class="empty-state">No transformations saved. Add one below.</div>';
+    return;
+  }
+
+  container.innerHTML = transforms.map(t => `
+    <div class="library-item" data-id="${t.id}">
+      <input type="checkbox" class="transform-checkbox" data-id="${t.id}" ${activeIds.includes(t.id) ? 'checked' : ''} />
+      <div class="library-item-content">
+        <div class="library-item-title">${escapeHtml(t.name || t.operation || 'Transform')}</div>
+        <div class="library-item-pattern">${escapeHtml(transformationPreview(t))}</div>
+      </div>
+      <div class="library-item-actions">
+        <button class="btn ghost edit-transform" data-id="${t.id}">Edit</button>
+        <button class="btn ghost delete-transform" data-id="${t.id}">Delete</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.transform-checkbox').forEach(cb => {
+    cb.addEventListener('change', handleTransformToggle);
+  });
+  container.querySelectorAll('.delete-transform').forEach(btn => {
+    btn.addEventListener('click', handleDeleteTransform);
+  });
+  container.querySelectorAll('.edit-transform').forEach(btn => {
+    btn.addEventListener('click', handleEditTransform);
+  });
+  renderPipelineList();
+}
+
+function addTransformationFromInputs() {
+  const name = $("#transformName")?.value.trim();
+  const sourceField = $("#transformSource")?.value.trim();
+  const operation = $("#transformOp")?.value;
+  const targetField = $("#transformTarget")?.value.trim() || sourceField;
+  const option = $("#transformOption")?.value.trim();
+
+  if (!sourceField) {
+    alert('Please provide source field for transformation.');
+    return;
+  }
+
+  const transform = {
+    name: name || `${operation}(${sourceField})`,
+    sourceField,
+    targetField,
+    operation,
+    enabled: true,
+    order: Storage.getTransforms().length
+  };
+
+  if (editingTransformId) {
+    const existing = Storage.getTransforms().find(t => t.id === editingTransformId);
+    if (existing) {
+      transform.id = existing.id;
+      transform.created = existing.created;
+      transform.enabled = existing.enabled !== false;
+      transform.order = existing.order ?? 0;
+    }
+  }
+
+  if (operation === 'json-parse') {
+    if (option) transform.path = option;
+  } else if (operation === 'xml-tag') {
+    if (!option) {
+      alert('XML transform requires a tag name in Option.');
+      return;
+    }
+    transform.tag = option;
+  } else if (operation === 'js') {
+    if (!option) {
+      alert('JS transform requires an expression in Option.');
+      return;
+    }
+    transform.expression = option;
+  }
+
+  const saved = Storage.saveTransform(transform);
+  const activeIds = Storage.getActiveTransforms();
+  if (!activeIds.includes(saved.id)) {
+    activeIds.push(saved.id);
+    Storage.setActiveTransforms(activeIds);
+  }
+
+  if ($("#transformName")) $("#transformName").value = '';
+  if ($("#transformSource")) $("#transformSource").value = '';
+  if ($("#transformTarget")) $("#transformTarget").value = '';
+  if ($("#transformOption")) $("#transformOption").value = '';
+  if ($("#transformOp")) $("#transformOp").value = 'json-parse';
+
+  clearTransformEditState();
+
+  renderTransformationList();
+  updateExtractorInfo();
+}
+
+function clearTransformEditState() {
+  editingTransformId = null;
+  const addBtn = $("#addTransform");
+  const cancelBtn = $("#cancelTransformEdit");
+  if (addBtn) addBtn.textContent = '+ Add Transform';
+  if (cancelBtn) cancelBtn.style.display = 'none';
+}
+
+function handleEditTransform(e) {
+  const id = e.target.dataset.id;
+  const transform = Storage.getTransforms().find(t => t.id === id);
+  if (!transform) return;
+
+  editingTransformId = id;
+  if ($("#transformName")) $("#transformName").value = transform.name || '';
+  if ($("#transformSource")) $("#transformSource").value = transform.sourceField || '';
+  if ($("#transformTarget")) $("#transformTarget").value = transform.targetField || '';
+  if ($("#transformOp")) $("#transformOp").value = transform.operation || 'json-parse';
+  if ($("#transformOption")) {
+    if (transform.operation === 'json-parse') $("#transformOption").value = transform.path || '';
+    else if (transform.operation === 'xml-tag') $("#transformOption").value = transform.tag || transform.path || '';
+    else if (transform.operation === 'js') $("#transformOption").value = transform.expression || '';
+    else $("#transformOption").value = '';
+  }
+
+  const addBtn = $("#addTransform");
+  const cancelBtn = $("#cancelTransformEdit");
+  if (addBtn) addBtn.textContent = 'Save Transform';
+  if (cancelBtn) cancelBtn.style.display = '';
 }
 
 /**
@@ -1474,6 +1925,34 @@ function handleExtractorToggle(e) {
 
   Storage.setActiveExtractors(activeIds);
   updateExtractorInfo();
+  renderPipelineList();
+}
+
+function handleTransformToggle(e) {
+  const id = e.target.dataset.id;
+  const activeIds = Storage.getActiveTransforms();
+
+  if (e.target.checked) {
+    if (!activeIds.includes(id)) activeIds.push(id);
+  } else {
+    const idx = activeIds.indexOf(id);
+    if (idx >= 0) activeIds.splice(idx, 1);
+  }
+
+  Storage.setActiveTransforms(activeIds);
+  updateExtractorInfo();
+  renderPipelineList();
+}
+
+function handleDeleteTransform(e) {
+  const id = e.target.dataset.id;
+  const transform = Storage.getTransforms().find(t => t.id === id);
+  if (transform && confirm(`Delete transform "${transform.name}"?`)) {
+    if (editingTransformId === id) clearTransformEditState();
+    Storage.deleteTransform(id);
+    renderTransformationList();
+    updateExtractorInfo();
+  }
 }
 
 /**
@@ -1568,6 +2047,7 @@ function addRule(rule = null) {
   currentFilterConfig.rules.push(r);
   currentFilterConfig.rules[currentFilterConfig.rules.length - 1].logic = null;
   // do not apply; wait for user to press Apply
+  renderPipelineList();
 }
 
 function deleteRule(id) {
@@ -1576,6 +2056,7 @@ function deleteRule(id) {
   // Ensure logic on last rule is null
   if (currentFilterConfig.rules.length > 0) currentFilterConfig.rules[currentFilterConfig.rules.length - 1].logic = null;
   renderBuilderUI();
+  renderPipelineList();
   // do not auto-apply
 }
 
@@ -1589,6 +2070,7 @@ function updateRuleField(id, fieldName) {
   r.operator = ops?.[0]?.value || 'equals';
   r.value = '';
   renderBuilderUI();
+  renderPipelineList();
   // do not auto-apply
 }
 
@@ -1597,6 +2079,7 @@ function updateRuleOperator(id, operator) {
   if (!r) return;
   r.operator = operator;
   renderBuilderUI();
+  renderPipelineList();
   // do not auto-apply
 }
 
@@ -1604,6 +2087,7 @@ function updateRuleValue(id, value) {
   const r = (currentFilterConfig?.rules || []).find(rr => rr.id === id);
   if (!r) return;
   r.value = value;
+  renderPipelineList();
   // do not auto-apply; preview updated by renderBuilderUI
 }
 
@@ -1612,6 +2096,7 @@ function updateRuleLogic(id, logic) {
   if (idx < 0) return;
   currentFilterConfig.rules[idx].logic = logic;
   renderBuilderUI();
+  renderPipelineList();
   // do not auto-apply
 }
 
@@ -1768,8 +2253,10 @@ function handleDeleteFilter(e) {
  */
 function updateExtractorInfo() {
   const activeIds = Storage.getActiveExtractors();
+  const activeTransformIds = Storage.getActiveTransforms();
   const totalExtractors = Storage.getExtractors().length;
-  $("#extractInfo").textContent = `${activeIds.length} of ${totalExtractors} active`;
+  const totalTransforms = Storage.getTransforms().length;
+  $("#extractInfo").textContent = `${activeIds.length}/${totalExtractors} extractors · ${activeTransformIds.length}/${totalTransforms} transforms active`;
 }
 
 /**
@@ -1861,7 +2348,7 @@ function toggleSection(header) {
 
 /**
  * Show a specific tab inside the Search Tools collapsible
- * @param {string} tab - 'help' | 'filters' | 'extractors'
+ * @param {string} tab - 'help' | 'pipeline' | 'filters' | 'extractors' | 'transforms' | 'columns'
  */
 function showSearchTab(tab) {
   const t = tab || 'help';
@@ -1902,43 +2389,14 @@ function initializeEventHandlers() {
     el.addEventListener('input', () => { if (!builderOpen) currentFilterConfig = null; });
   });
 
-  // Action buttons
-  $("#apply").addEventListener('click', async e => {
-    e.preventDefault();
-    // Apply: copy current builder rules to appliedFilterConfig
-    appliedFilterConfig = currentFilterConfig ? JSON.parse(JSON.stringify(currentFilterConfig)) : null;
-
-    // Show progress
-    $("#filterProgress").style.display = 'block';
-    $("#filterProgressFill").style.width = '0%';
-    $("#filterProgressText").textContent = 'Applying filters...';
-
-    // Parse advanced query using worker
-    const queryText = $("#textQuery").value.trim();
-    if (queryText) {
-      try {
-        const response = await sendToWorker('PARSE_ADVANCED_QUERY', { queryText }, true);
-        if (response.data.success) {
-          appliedAdvancedQuery = response.data.result;
-          $('#queryError').textContent = '';
-        } else {
-          appliedAdvancedQuery = null;
-          $('#queryError').textContent = 'Query parse error: ' + response.data.error;
-          $("#filterProgress").style.display = 'none';
-          return; // Don't apply filters if query parsing failed
-        }
-      } catch (error) {
-        appliedAdvancedQuery = null;
-        $('#queryError').textContent = 'Query parse error: ' + error.message;
-        $("#filterProgress").style.display = 'none';
-        return;
-      }
-    } else {
-      appliedAdvancedQuery = null;
-    }
-
-    applyFilters();
-  });
+  // Pipeline run button
+  const runPipelineBtn = $("#runPipelineBtn");
+  if (runPipelineBtn) {
+    runPipelineBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      runPipeline();
+    });
+  }
 
   // Builder always visible (no toggle)
 
@@ -1975,6 +2433,7 @@ function initializeEventHandlers() {
       parseTimer = setTimeout(() => {
         $('#queryError').textContent = '';
       }, 200);
+      renderPipelineList();
     });
 
     // Clickable field name suggestions
@@ -2143,7 +2602,8 @@ function initializeEventHandlers() {
 
   // Extractor library
   $("#addExtractor").addEventListener('click', () => openExtractorModal());
-  $("#runActiveExtractors").addEventListener('click', runActiveExtractors);
+  const runActiveExtractorsBtn = $("#runActiveExtractors");
+  if (runActiveExtractorsBtn) runActiveExtractorsBtn.addEventListener('click', runActiveExtractors);
   $("#closeExtractorModal").addEventListener('click', closeExtractorModal);
   $("#cancelExtractor").addEventListener('click', closeExtractorModal);
   $("#saveExtractor").addEventListener('click', saveExtractorFromModal);
@@ -2180,6 +2640,32 @@ function initializeEventHandlers() {
     prefs.extractorMergeStrategy = e.target.value;
     Storage.savePrefs(prefs);
   });
+
+  const addTransformBtn = $("#addTransform");
+  if (addTransformBtn) {
+    addTransformBtn.addEventListener('click', addTransformationFromInputs);
+  }
+
+  const cancelTransformEditBtn = $("#cancelTransformEdit");
+  if (cancelTransformEditBtn) {
+    cancelTransformEditBtn.addEventListener('click', () => {
+      clearTransformEditState();
+      if ($("#transformName")) $("#transformName").value = '';
+      if ($("#transformSource")) $("#transformSource").value = '';
+      if ($("#transformTarget")) $("#transformTarget").value = '';
+      if ($("#transformOption")) $("#transformOption").value = '';
+      if ($("#transformOp")) $("#transformOp").value = 'json-parse';
+    });
+  }
+
+  const unsafeToggle = $("#unsafeJsTransforms");
+  if (unsafeToggle) {
+    unsafeToggle.addEventListener('change', e => {
+      const prefs = Storage.getPrefs();
+      prefs.unsafeJsTransforms = !!e.target.checked;
+      Storage.savePrefs(prefs);
+    });
+  }
 
   // Saved Filters dropdown actions
   const sfSelect = $('#savedFilterSelect');
@@ -2235,9 +2721,12 @@ function initializeEventHandlers() {
   // Clean up active extractors on load (remove deleted/invalid IDs)
   const activeIds = Storage.getActiveExtractors();
   Storage.setActiveExtractors(activeIds); // This will dedupe and validate
+  const activeTransformIds = Storage.getActiveTransforms();
+  Storage.setActiveTransforms(activeTransformIds);
   // Migrate any old v1 filters to v2 format on startup
   migrateAllFilters();
   renderExtractorList();
+  renderTransformationList();
   renderFilterList();
   updateExtractorInfo();
   updateFilterLibInfo();
@@ -2267,7 +2756,7 @@ $("#summary-details").addEventListener('toggle', () => {
  * Move the content of existing top-level sections into tab panels and remove originals
  */
 function moveSearchContentIntoTabs() {
-  const names = ['help', 'filters', 'extractors'];
+  const names = ['help', 'pipeline', 'filters', 'extractors', 'transforms'];
   names.forEach(name => {
     const old = document.getElementById(`section-${name}`);
     const panel = document.getElementById(`tab-${name}`);
@@ -2290,8 +2779,8 @@ function moveSearchContentIntoTabs() {
     });
   });
 
-  // Default open first tab (Filters & Sort) when Search Tools appears
-  showSearchTab('filters');
+  // Default open Pipeline tab for execution-order visibility
+  showSearchTab('pipeline');
 }
 
 // ---------- Settings ----------
@@ -2304,6 +2793,11 @@ function initializeSettings() {
   const mergeStrategySelect = $("#mergeStrategy");
   if (mergeStrategySelect) {
     mergeStrategySelect.value = prefs.extractorMergeStrategy || 'last-wins';
+  }
+
+  const unsafeToggle = $("#unsafeJsTransforms");
+  if (unsafeToggle) {
+    unsafeToggle.checked = !!prefs.unsafeJsTransforms;
   }
 
   // Initialize page size from preferences
