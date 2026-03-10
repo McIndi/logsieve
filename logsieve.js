@@ -955,7 +955,14 @@ const idHeader = theadRow.querySelector('.id-header');
 function updateFilterTag() {
   const bits = [];
   if (currentFilterConfig && currentFilterConfig.rules && currentFilterConfig.rules.length) bits.push('builder');
-  if (appliedAdvancedQuery && appliedAdvancedQuery.rules && appliedAdvancedQuery.rules.length) bits.push('advanced');
+  const hasAdvanced = !!(
+    appliedAdvancedQuery &&
+    (
+      (appliedAdvancedQuery.version === 3 && appliedAdvancedQuery.ast) ||
+      (Array.isArray(appliedAdvancedQuery.rules) && appliedAdvancedQuery.rules.length)
+    )
+  );
+  if (hasAdvanced) bits.push('advanced');
   $("#filterTag").textContent = bits.length ? `filters: ${bits.join(',')}` : 'no filters';
 }
 
@@ -1980,7 +1987,7 @@ function handleDeleteExtractor(e) {
 /**
  * Handle apply filter button
  */
-function handleApplyFilter(e) {
+async function handleApplyFilter(e) {
   const id = e.target.dataset.id;
   const filter = Storage.getFilters().find(f => f.id === id);
 
@@ -1993,8 +2000,6 @@ function handleApplyFilter(e) {
 
   // Apply saved filter settings to UI
   $("#textQuery").value = filter.advancedQuery || filter.quickSearch || filter.query || '';
-  $("#sort").value = filter.sort || 'id';
-  $("#order").value = filter.order || 'desc';
   $("#sort").value = filter.sort || 'id';
   $("#order").value = filter.order || 'desc';
 
@@ -2014,18 +2019,26 @@ function handleApplyFilter(e) {
     currentFilterConfig = null;
   }
 
-  // Trigger filter application
-  // Also set applied advanced query from saved filter
-  if (filter.advancedQuery) {
+  // Parse and set applied advanced query using the worker path for consistency
+  if ($('#textQuery').value.trim()) {
     try {
-      const parser = new QueryParser(filter.advancedQuery);
-      const rules = parser.parse();
-      appliedAdvancedQuery = QueryParser.compileToFilter(rules);
+      const response = await sendToWorker('PARSE_ADVANCED_QUERY', { queryText: $('#textQuery').value.trim() }, true);
+      if (response.data.success) {
+        appliedAdvancedQuery = response.data.result;
+        $('#queryError').textContent = '';
+      } else {
+        appliedAdvancedQuery = null;
+        $('#queryError').textContent = 'Query parse error: ' + response.data.error;
+        return;
+      }
     } catch (err) {
       appliedAdvancedQuery = null;
+      $('#queryError').textContent = 'Query parse error: ' + err.message;
+      return;
     }
   } else {
     appliedAdvancedQuery = null;
+    $('#queryError').textContent = '';
   }
   applyFilters('saved-filtering');
 }
