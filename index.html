@@ -86,6 +86,22 @@
               <p>LogSieve is a powerful log analysis tool that runs entirely in your browser. Use the section headers or
                 Search Tools tabs to navigate between sections, and click section headers to expand/collapse them. The
                 Results section is always visible so you can see your data while working.</p>
+              <p><strong>Recommended workflow:</strong> Upload logs, configure pipeline steps (filter rules, advanced
+                query, extractors, transforms), drag steps into the order you want in <strong>Pipeline</strong>, then
+                click <strong>Run Pipeline</strong> in the header.</p>
+
+              <h3 style="margin-top:1.5rem; font-size:15px; color:var(--ink)">Pipeline (Execution Order)</h3>
+              <p>The <strong>Pipeline</strong> tab is the authoritative execution plan. Each enabled step runs top to
+                bottom in the displayed order.</p>
+              <ul style="margin:8px 0; padding-left:20px">
+                <li><strong>Step types:</strong> individual Builder rules, Advanced Query, active Extractors, and active
+                  Transformations</li>
+                <li><strong>Reordering:</strong> drag steps to change execution order (for example, run extraction before
+                  a filter that depends on extracted fields)</li>
+                <li><strong>Enable/disable:</strong> use step checkboxes to include or skip steps without deleting them</li>
+                <li><strong>Data safety:</strong> every pipeline run starts from the original parsed rows, so removing a
+                  transform reverts its effect on subsequent runs</li>
+              </ul>
 
               <h3 style="margin-top:1.5rem; font-size:15px; color:var(--ink)">Upload</h3>
               <p>Load your log files to start analyzing. LogSieve supports multiple formats:</p>
@@ -101,8 +117,8 @@
 
               <h3 style="margin-top:1.5rem; font-size:15px; color:var(--ink)">Filters & Sort</h3>
               <p>Narrow down your logs to find exactly what you need. LogSieve now uses an extensible Query Builder for
-                structured filtering plus an Advanced Query input for free-form queries. Both are applied together when
-                you click <strong>Apply</strong>.</p>
+                structured filtering plus an Advanced Query input for free-form queries. Filters are now pipeline steps
+                and run in your configured order when you click <strong>Run Pipeline</strong>.</p>
               <ul style="margin:8px 0; padding-left:20px">
                 <li><strong>Builder rules</strong> - Create structured rules by choosing a Field, Operator and Value.
                   Use logical operators (AND/OR) between rules. The builder is the primary filter UI and is visible by
@@ -113,9 +129,8 @@
                 <li><strong>Sort</strong> - Order results by ID, timestamp, level, or any extracted field</li>
                 <li><strong>Page Size</strong> - Control how many results appear per page (25-200)</li>
               </ul>
-              <p><strong>Tip:</strong> Click <strong>Apply</strong> after changing filters; the Builder and Advanced
-                Query are applied together to allow flexible AND/OR combinations. Use "Clear filters" to reset the
-                builder and advanced query.</p>
+              <p><strong>Tip:</strong> Click <strong>Run Pipeline</strong> after changing filters. Use "Clear filters"
+                to reset the builder and advanced query.</p>
 
               <h4 style="margin-top:1rem; font-size:14px; color:var(--ink)">Query Builder</h4>
               <p>The Query Builder is an intuitive way to create structured filters without needing to remember syntax.
@@ -131,7 +146,7 @@
               </ul>
               <p>Use the logic selector between rules to chain them with <em>AND</em> or <em>OR</em>. Click the
                 <strong>Add Rule</strong> button to add a new rule; builder changes do not automatically apply until you
-                click <strong>Apply</strong>.
+                click <strong>Run Pipeline</strong>.
               </p>
 
               <h4 style="margin-top:1rem; font-size:14px; color:var(--ink)">Advanced Text Query</h4>
@@ -153,8 +168,7 @@
                 </li>
               </ul>
               <p><strong>Important:</strong> The Advanced Query is validated live but is only applied when you click
-                <strong>Apply</strong>, keeping it separate from the builder. Saved filters remember both Builder rules
-                and the Advanced Query.
+                <strong>Run Pipeline</strong>. Saved filters remember both Builder rules and the Advanced Query.
               </p>
 
               <h4 style="margin-top:1rem; font-size:14px; color:var(--ink)">Timestamps & Timezones</h4>
@@ -177,7 +191,7 @@
                 <li><strong>Create Extractors</strong> - Click "+ New Extractor" to define a regex pattern with named
                   groups like <code>(?&lt;user&gt;\w+)</code></li>
                 <li><strong>Activate Extractors</strong> - Check the boxes next to extractors you want to use, then
-                  click "▶ Run Active"</li>
+                  click <strong>Run Pipeline</strong></li>
                 <li><strong>Apply Scope</strong> - Choose whether to apply extractors to "All rows" or only "Filtered
                   rows"</li>
                 <li><strong>Merge Strategy</strong> - Control how overlapping field names are handled when multiple
@@ -196,6 +210,40 @@
                 precise filters.</p>
               <p><strong>Tip:</strong> Extracted fields become sortable columns in the Results table and export cleanly
                 to CSV/JSON.</p>
+
+              <h3 style="margin-top:1.5rem; font-size:15px; color:var(--ink)">Transformations</h3>
+              <p>The <strong>Transformations</strong> tab lets you define reusable row transformations. Active
+                transformations run in pipeline order when you click <strong>Run Pipeline</strong>.</p>
+              <ul style="margin:8px 0; padding-left:20px">
+                <li><strong>Source and target fields</strong> - Choose any field as source. Leave target blank to
+                  overwrite source, or set a target to write a new field.</li>
+                <li><strong>JSON Parse</strong> - Parses JSON text. Optional path uses dot notation (for example
+                  <code>user.id</code>).</li>
+                <li><strong>XML Extract Tag</strong> - Extracts text from the first matching tag name (for example
+                  <code>id</code>).</li>
+                <li><strong>URL Decode/Encode</strong> - Uses standard URI component decode/encode behavior.</li>
+                <li><strong>JavaScript Expression (Unsafe)</strong> - Disabled by default and only runs when
+                  <em>Enable Unsafe JS transforms</em> is checked.</li>
+              </ul>
+              <p><strong>Failure behavior:</strong> if a transformation fails for a row, LogSieve keeps the original
+                value for that row and continues processing.</p>
+
+              <h4 style="margin-top:1rem; font-size:14px; color:var(--ink)">Transformation Examples</h4>
+              <ul style="margin:8px 0; padding-left:20px">
+                <li><strong>JSON extraction</strong> - Source <code>payload</code>, Operation <code>JSON Parse</code>,
+                  Option <code>user.id</code>, Target <code>user_id</code></li>
+                <li><strong>URL decode</strong> - Source <code>query</code>, Operation <code>URL Decode</code>, Target
+                  <code>query_decoded</code></li>
+                <li><strong>XML tag text</strong> - Source <code>xml</code>, Operation <code>XML Extract Tag</code>,
+                  Option <code>id</code>, Target <code>xml_id</code></li>
+                <li><strong>Unsafe JS normalize</strong> - Source <code>message</code>, Operation
+                  <code>JavaScript Expression (Unsafe)</code>, Option <code>value.trim().toLowerCase()</code>, Target
+                  <code>message_norm</code></li>
+              </ul>
+              <p style="margin-top:6px; color:var(--muted); font-size:13px">Unsafe JS expressions run in a worker
+                with limits, but they are still advanced and potentially risky. Prefer built-in operations when
+                possible.</p>
+
               <h3 style="margin-top:1.5rem; font-size:15px; color:var(--ink)">Columns</h3>
               <p>The <strong>Columns</strong> panel (Search Tools → Columns) lets you control which fields appear in the
                 Results table and in what order.</p>
@@ -239,7 +287,7 @@
                 <li><strong>Timeline Sparkline</strong> - Visual chart showing log activity over time (grouped by minute)</li>
               </ul>
               <p>The table displays ID, Timestamp, Level, Message, and any extracted fields as columns. Navigate through results using pagination buttons or see current page info. Click "raw" details toggle on any row to see the original log line. Multi-line events like stack traces are kept together as single entries.</p>
-              <p><strong>Note:</strong> Statistics update automatically whenever you apply filters or load new data.</p>
+              <p><strong>Note:</strong> Statistics update automatically whenever you run the pipeline or load new data.</p>
               <p><strong>Tip:</strong> This section is always visible so you can see your data while working with other sections.</p>
 
               <h4 style="margin-top:1rem; font-size:14px; color:var(--ink)">Summary Statistics (Beta)</h4>
@@ -268,13 +316,14 @@
               <ul style="margin:8px 0; padding-left:20px">
                 <li><strong>Export Data</strong> - Save filtered results as JSON or CSV files under Tools > Data in the
                   top header</li>
-                <li><strong>Export Library</strong> - Backup all your extractors and saved filters to a JSON file under
+                <li><strong>Export Library</strong> - Backup extractors, transformations, saved filters, active
+                  selections, and preferences to a JSON file under
                   Tools > Library > Export</li>
-                <li><strong>Import Library</strong> - Load extractors and filters from a JSON file under Tools > Library
+                <li><strong>Import Library</strong> - Load extractors, transformations, and filters from a JSON file under Tools > Library
                   > Import (choose merge or replace)</li>
               </ul>
               <p><strong>Privacy:</strong> All data stays in your browser. Nothing is sent to any server. Extractors and
-                filters are saved in localStorage.</p>
+                transformations are saved in localStorage.</p>
 
               <h3 style="margin-top:1.5rem; font-size:15px; color:var(--ink)">Keyboard Shortcuts</h3>
               <ul style="margin:8px 0; padding-left:20px">
@@ -299,14 +348,18 @@
             <div class="tabs">
               <div class="tab-nav" role="tablist">
                 <button class="tab-btn active" role="tab" data-tab="help">Help</button>
+                <button class="tab-btn" role="tab" data-tab="pipeline">Pipeline</button>
                 <button class="tab-btn" role="tab" data-tab="filters">Filters & Sort</button>
                 <button class="tab-btn" role="tab" data-tab="extractors">Extractor Library</button>
+                <button class="tab-btn" role="tab" data-tab="transforms">Transformations</button>
                 <button class="tab-btn" role="tab" data-tab="columns">Columns</button>
               </div>
               <div class="tab-panels">
                 <div class="tab-panel" id="tab-help" role="tabpanel"></div>
+                <div class="tab-panel" id="tab-pipeline" role="tabpanel" style="display:none"></div>
                 <div class="tab-panel" id="tab-filters" role="tabpanel" style="display:none"></div>
                 <div class="tab-panel" id="tab-extractors" role="tabpanel" style="display:none"></div>
+                <div class="tab-panel" id="tab-transforms" role="tabpanel" style="display:none"></div>
                 <div class="tab-panel" id="tab-columns" role="tabpanel" style="display:none">
                   <div class="pad">
                     <h3 style="margin-top:0; font-size:15px">Columns</h3>
@@ -412,7 +465,6 @@
               <div class="progress-text" id="filterProgressText">Applying filters...</div>
             </div>
             <div class="flex" style="margin-top:18px">
-              <button class="btn" id="apply">Apply</button>
               <button class="btn ghost" id="clear">Clear filters</button>
             </div>
 
@@ -435,8 +487,6 @@
           <div class="pad">
             <div class="flex" style="margin-bottom:10px">
               <button class="btn" id="addExtractor" title="Create a new regex extractor">+ New Extractor</button>
-              <button class="btn ghost" id="runActiveExtractors" title="Apply all checked extractors">Run
-                Active</button>
               <label style="margin-left:10px"> Apply to
                 <select id="extractScope" title="Choose whether to apply extractors to all rows or only filtered rows">
                   <option value="all">All rows</option>
@@ -487,6 +537,79 @@
         </div>
       </section>
 
+      <!-- Transformations Section -->
+      <section class="section-card" id="section-transforms" data-section="transforms">
+        <h2 class="section-header">
+          <span>Transformations</span>
+        </h2>
+        <div class="section-content">
+          <div class="pad">
+            <div class="controls" style="margin-top:10px">
+              <label> Name
+                <input type="text" id="transformName" placeholder="Parse payload JSON" />
+              </label>
+              <label> Source Field
+                <input type="text" id="transformSource" placeholder="payload / raw / message / any field" />
+              </label>
+              <label> Operation
+                <select id="transformOp">
+                  <option value="json-parse">JSON Parse</option>
+                  <option value="xml-tag">XML Extract Tag</option>
+                  <option value="url-decode">URL Decode</option>
+                  <option value="url-encode">URL Encode</option>
+                  <option value="js">JavaScript Expression (Unsafe)</option>
+                </select>
+              </label>
+              <label> Option (path/tag/js expression)
+                <input type="text" id="transformOption"
+                  placeholder="json path e.g. user.id, xml tag e.g. id, or JS expression e.g. value.trim()" />
+              </label>
+              <label> Target Field (optional)
+                <input type="text" id="transformTarget" placeholder="leave blank to overwrite source" />
+              </label>
+            </div>
+            <div class="flex" style="margin-top:10px">
+              <button class="btn" id="addTransform" type="button">+ Add Transform</button>
+              <button class="btn ghost" id="cancelTransformEdit" type="button" style="display:none">Cancel Edit</button>
+              <label style="display:flex; align-items:center; gap:6px; margin-left:10px; font-size:0.9em; color:var(--muted)">
+                <input type="checkbox" id="unsafeJsTransforms" /> Enable Unsafe JS transforms
+              </label>
+            </div>
+            <div style="font-size:0.85em; color:var(--muted); margin-top:6px; line-height:1.4">
+              JS expressions are executed in a worker with limits, but still unsafe for untrusted input.
+            </div>
+            <div id="transformList" class="library-list" style="margin-top:10px">
+              <div class="empty-state">No transformations saved. Add one above.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pipeline Section -->
+      <section class="section-card" id="section-pipeline" data-section="pipeline">
+        <h2 class="section-header">
+          <span>Pipeline</span>
+        </h2>
+        <div class="section-content">
+          <div class="pad">
+            <p style="margin:6px 0 12px 0; color:var(--muted); font-size:13px">Drag to reorder the execution flow.
+              Pipeline always re-runs from original parsed rows.</p>
+            <div id="pipelineProgress" class="progress-container" style="display:none; margin-bottom:10px;">
+              <div class="progress-bar">
+                <div class="progress-fill" id="pipelineProgressFill"></div>
+              </div>
+              <div class="progress-text" id="pipelineProgressText">Running pipeline...</div>
+            </div>
+            <div id="pipelineList" class="library-list">
+              <div class="empty-state">No pipeline steps yet. Add filter rules, extractors, or transformations.</div>
+            </div>
+            <div class="flex" style="margin-top:10px">
+              <button class="btn" id="runPipelineBtn" title="Run the configured pipeline in the current order">▶ Run Pipeline</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Saved Filters moved into Filters & Sort (UI updated below) -->
 
       <!-- Summary merged into Results (see below) -->
@@ -508,6 +631,7 @@
         </details>
         <div class="section-content">
           <div class="pad">
+            <div id="transformErrorAlert" class="pipeline-alert error" style="display:none;"></div>
             <div class="stats" style="margin-bottom:12px">
               <div class="stat">
                 <div class="k">Rows</div>

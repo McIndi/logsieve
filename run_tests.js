@@ -19,6 +19,11 @@ function loadAppCode() {
         window: {},
         navigator: {},
         global: {}, // Add global for tests that use it
+        require,
+        process,
+        Buffer,
+        setTimeout,
+        clearTimeout,
         generateUUID: () => 'mock-uuid-' + Math.random().toString(36).substr(2, 9),
         fmt: (n) => n,
     });
@@ -50,6 +55,8 @@ function runTests() {
     for (const file of testFiles) {
         console.log(`📄 ${BOLD}${file}${RESET}`);
         const context = loadAppCode();
+        context.__dirname = TEST_DIR;
+        context.__filename = path.join(TEST_DIR, file);
 
         // Add test helpers to context
         context.assert = require('assert');

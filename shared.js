@@ -641,6 +641,214 @@ function runMultipleExtractors(extractors, scope, mergeStrategy = 'last-wins', p
     return results;
 }
 
+// ---------- Row Transformations (shared) ----------
+
+function getRowFieldValue(row, field) {
+    if (!row || !field) return undefined;
+    if (field === 'id') return row.id;
+    if (field === 'ts') return row.ts;
+    if (field === 'level') return row.level;
+    if (field === 'message') return row.message;
+    if (field === 'raw') return row.raw;
+    return row.fields ? row.fields[field] : undefined;
+}
+
+function setRowFieldValue(row, field, value) {
+    if (!row || !field) return;
+    if (field === 'id') { row.id = value; return; }
+    if (field === 'ts') { row.ts = value; return; }
+    if (field === 'level') { row.level = value; return; }
+    if (field === 'message') { row.message = value; return; }
+    if (field === 'raw') { row.raw = value; return; }
+    if (!row.fields) row.fields = {};
+    row.fields[field] = value;
+    if (typeof fieldNames !== 'undefined' && field !== 'ts' && field !== 'level' && field !== 'message') {
+        try { fieldNames.add(field); } catch (e) { /* ignore */ }
+    }
+}
+
+function updateRowSearchIndex(row) {
+    const parts = [row.raw || '', row.message || ''];
+    if (row.fields) {
+        for (const v of Object.values(row.fields)) {
+            if (Array.isArray(v)) parts.push(v.join(' '));
+            else if (v !== undefined && v !== null) parts.push(String(v));
+        }
+    }
+    row._lc = parts.join(' ').toLowerCase();
+}
+
+function parsePathValue(value, path) {
+    if (!path || path === '$') return value;
+    const parts = String(path).split('.').filter(Boolean);
+    let cur = value;
+    for (const part of parts) {
+        if (cur === undefined || cur === null) return undefined;
+        if (Array.isArray(cur)) {
+            const idx = Number(part);
+            if (!Number.isInteger(idx)) return undefined;
+            cur = cur[idx];
+        } else if (typeof cur === 'object') {
+            cur = cur[part];
+        } else {
+            return undefined;
+        }
+    }
+    return cur;
+}
+
+function xmlExtractTagText(xmlText, tagName) {
+    if (!tagName) throw new Error('XML tag is required');
+    const safeTag = String(tagName).trim();
+    if (!safeTag) throw new Error('XML tag is required');
+    const re = new RegExp(`<${safeTag}[^>]*>([\\s\\S]*?)<\\/${safeTag}>`, 'i');
+    const m = String(xmlText || '').match(re);
+    if (!m) return '';
+    return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+}
+
+function sanitizeJsExpression(expression) {
+    const source = String(expression || '').trim();
+    if (!source) throw new Error('JS expression is empty');
+    if (source.length > 500) throw new Error('JS expression too long');
+
+    const banned = [
+        /\beval\b/i,
+        /\bFunction\b/i,
+        /\bimportScripts\b/i,
+        /\bfetch\b/i,
+        /\bXMLHttpRequest\b/i,
+        /\bwhile\s*\(/i,
+        /\bfor\s*\(/i,
+        /\bdo\s*\{/i,
+        /\bwindow\b/i,
+        /\bdocument\b/i,
+        /\bself\b/i,
+        /\bglobalThis\b/i
+    ];
+    if (banned.some(re => re.test(source))) {
+        throw new Error('JS expression contains restricted tokens');
+    }
+    return source;
+}
+
+function compileUnsafeJsTransform(expression) {
+    const src = sanitizeJsExpression(expression);
+    return new Function('value', 'row', 'fieldValue', 'sourceField', 'targetField', 'transform',
+        '"use strict"; return (' + src + ');');
+}
+
+function applyRowTransform(row, transform, runtime = {}) {
+    if (!row || !transform || transform.enabled === false) return { changed: false, skipped: true };
+
+    const sourceField = transform.sourceField || 'raw';
+    const targetField = transform.targetField || sourceField;
+    const op = transform.operation || 'identity';
+    const sourceValue = getRowFieldValue(row, sourceField);
+    let output;
+
+    if (sourceValue === undefined || sourceValue === null) {
+        return { changed: false, skipped: true };
+    }
+
+    try {
+        if (op === 'json-parse') {
+            const parsed = JSON.parse(String(sourceValue));
+            output = transform.path ? parsePathValue(parsed, transform.path) : parsed;
+        } else if (op === 'url-decode') {
+            output = decodeURIComponent(String(sourceValue));
+        } else if (op === 'url-encode') {
+            output = encodeURIComponent(String(sourceValue));
+        } else if (op === 'xml-tag') {
+            output = xmlExtractTagText(String(sourceValue), transform.tag || transform.path);
+        } else if (op === 'js') {
+            if (!runtime.unsafeMode) {
+                return { changed: false, skipped: true };
+            }
+            const fn = transform._compiledFn || compileUnsafeJsTransform(transform.expression || transform.value || 'value');
+            transform._compiledFn = fn;
+            output = fn(sourceValue, row, sourceValue, sourceField, targetField, transform);
+        } else {
+            output = sourceValue;
+        }
+
+        const maxOutputLength = Number(runtime.maxOutputLength || 100000);
+        if (typeof output === 'string' && output.length > maxOutputLength) {
+            throw new Error('Transform output too large');
+        }
+
+        if (output !== undefined) {
+            setRowFieldValue(row, targetField, output);
+            updateRowSearchIndex(row);
+            return { changed: true, skipped: false };
+        }
+
+        return { changed: false, skipped: true };
+    } catch (e) {
+        return { changed: false, skipped: false, error: e.message || String(e) };
+    }
+}
+
+function runMultipleTransforms(transforms, scope, runtimeOptions = {}, progressCallback = null) {
+    const list = (transforms || []).filter(t => t && t.enabled !== false)
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    const results = { total: 0, changed: 0, failed: 0, byTransform: {}, errorSamples: [] };
+    if (list.length === 0 || !Array.isArray(scope) || scope.length === 0) return results;
+
+    const maxTotalMs = Number(runtimeOptions.maxTotalMs || 2000);
+    const maxErrorSamples = Number(runtimeOptions.maxErrorSamples || 12);
+    const deadline = Date.now() + maxTotalMs;
+
+    for (let i = 0; i < list.length; i++) {
+        const transform = list[i];
+        let changedRows = 0;
+        let failedRows = 0;
+
+        for (let r = 0; r < scope.length; r++) {
+            if (Date.now() > deadline) {
+                failedRows += (scope.length - r);
+                if (results.errorSamples.length < maxErrorSamples) {
+                    results.errorSamples.push({
+                        transformId: transform.id || `t-${i}`,
+                        transformName: transform.name || transform.operation || `transform-${i + 1}`,
+                        rowId: scope[r]?.id,
+                        error: 'Transformation budget exceeded; stopped early'
+                    });
+                }
+                break;
+            }
+            const res = applyRowTransform(scope[r], transform, runtimeOptions);
+            if (res.changed) changedRows++;
+            else if (res.error) {
+                failedRows++;
+                if (results.errorSamples.length < maxErrorSamples) {
+                    results.errorSamples.push({
+                        transformId: transform.id || `t-${i}`,
+                        transformName: transform.name || transform.operation || `transform-${i + 1}`,
+                        rowId: scope[r]?.id,
+                        error: res.error
+                    });
+                }
+            }
+        }
+
+        results.byTransform[transform.id || `t-${i}`] = { changed: changedRows, failed: failedRows };
+        results.total += changedRows + failedRows;
+        results.changed += changedRows;
+        results.failed += failedRows;
+
+        if (progressCallback) {
+            const percent = Math.round(((i + 1) / list.length) * 100);
+            progressCallback(percent, `Running transform ${i + 1}/${list.length}: ${transform.name || transform.operation}`);
+        }
+    }
+
+    if (progressCallback) progressCallback(100, `Completed ${list.length} transforms · ${fmt(results.changed)} changed`);
+    return results;
+}
+
 // ---------- Query Parser ----------
 
 /**
