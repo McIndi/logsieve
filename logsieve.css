@@ -629,6 +629,10 @@ details summary {
   color: var(--accent);
 }
 
+/* Help TOC arrow rotation */
+details .help-toc-arrow { transition: transform 0.2s ease; display:inline-block; font-size:10px; color:var(--muted); }
+details[open] > summary .help-toc-arrow { transform: rotate(90deg); }
+
 /* Saved filter dropdown - match other inputs */
 #savedFilterSelect {
   width: 100%;

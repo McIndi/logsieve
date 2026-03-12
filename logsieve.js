@@ -2320,8 +2320,8 @@ function navigateToSection(sectionId, tab) {
 
   // No sidebar nav links to toggle — sections are navigable via headers and Search Tools
 
-  // Scroll to section
-  targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Scroll to top of page so the expanded section is fully visible
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 
   // Sidebar removed — no-op
 }
@@ -2361,7 +2361,7 @@ function toggleSection(header) {
 
 /**
  * Show a specific tab inside the Search Tools collapsible
- * @param {string} tab - 'help' | 'pipeline' | 'filters' | 'extractors' | 'transforms' | 'columns'
+ * @param {string} tab - 'help' | 'filters' | 'extractors' | 'transforms' | 'columns'
  */
 function showSearchTab(tab) {
   const t = tab || 'help';
@@ -2769,7 +2769,7 @@ $("#summary-details").addEventListener('toggle', () => {
  * Move the content of existing top-level sections into tab panels and remove originals
  */
 function moveSearchContentIntoTabs() {
-  const names = ['help', 'pipeline', 'filters', 'extractors', 'transforms'];
+  const names = ['help', 'filters', 'extractors', 'transforms'];
   names.forEach(name => {
     const old = document.getElementById(`section-${name}`);
     const panel = document.getElementById(`tab-${name}`);
@@ -2792,8 +2792,8 @@ function moveSearchContentIntoTabs() {
     });
   });
 
-  // Default open Pipeline tab for execution-order visibility
-  showSearchTab('pipeline');
+  // Default to Help tab
+  showSearchTab('help');
 }
 
 // ---------- Settings ----------
