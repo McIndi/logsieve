@@ -4,7 +4,7 @@ A lightweight, client-side web application for exploring and filtering log files
 
 ## Links
 
-🌐 **[Try LogSieve Online](https://McIndi.github.io/logsieve/)** - Use the hosted version  
+🌐 **[Try LogSieve Online](https://mcindi.com/logsieve/)** - Use the hosted version  
 📦 **[GitHub Repository](https://github.com/McIndi/logsieve)** - View source code  
 💖 **[Support Development](https://github.com/sponsors/notesofcliff)** - Sponsor on GitHub
 
