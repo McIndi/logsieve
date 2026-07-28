@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
-  <title>LogSieve — single‑file web app</title>
-  <link rel="stylesheet" href="logsieve.css">
+  <title>LogSieve - single-file web app</title>
+  <link rel="stylesheet" href="logsieve.css?v=20260728">
 </head>
 
 <body>
@@ -13,7 +13,7 @@
     <div class="header-top">
       <div class="dropdown-group">
         <div class="dropdown">
-          <button class="btn dropdown-toggle" id="linksDropdown">Links ▼</button>
+          <button class="btn dropdown-toggle" id="linksDropdown">Links v</button>
           <div class="dropdown-menu" id="linksMenu">
             <a href="https://github.com/McIndi/logsieve" target="_blank">Source Code</a>
             <a href="https://github.com/sponsors/notesofcliff" target="_blank">Sponsor</a>
@@ -21,7 +21,7 @@
           </div>
         </div>
         <div class="dropdown">
-          <button class="btn dropdown-toggle" id="toolsDropdown">Tools ▼</button>
+          <button class="btn dropdown-toggle" id="toolsDropdown">Tools v</button>
           <div class="dropdown-menu" id="toolsMenu">
             <a href="regexlab.html">RegexLab</a>
             <div class="dropdown-submenu">
@@ -43,17 +43,14 @@
       </div>
       <h1>Logsieve</h1>
       <button class="btn theme-toggle" id="themeToggle" title="Toggle theme">
-        <span class="theme-icon">☀️</span>
+        <span class="theme-icon">*</span>
       </button>
       <input type="file" id="importFile" accept=".json" hidden />
     </div>
   </header>
 
   <div class="app-container">
-    <!-- Sidebar removed — navigation is now performed via section headers and Search Tools tabs -->
-
     <main class="main-content">
-      <!-- Upload Section (moved to top) -->
       <section class="section-card active" id="section-upload" data-section="upload">
         <h2 class="section-header">
           <span>Upload</span>
@@ -61,8 +58,16 @@
         <div class="section-content">
           <div class="pad">
             <div id="drop" class="drop">
-              Drag & drop a .log/.txt file here, or <button class="btn" id="pick">Browse…</button>
+              Drag and drop a log file here, or <button class="btn" id="pick">Browse...</button>
               <input type="file" id="file" accept=".log,.txt,.json,.ndjson,.csv" hidden />
+            </div>
+            <div class="quickstart-card">
+              <p class="quickstart-title">Simple flow</p>
+              <ol class="quickstart-list">
+                <li>Load a log, JSON, NDJSON, or CSV file.</li>
+                <li>Use Analyze to add filters, extractors, transforms, or column changes.</li>
+                <li>Run the pipeline and review the Results table below.</li>
+              </ol>
             </div>
             <div id="uploadProgress" class="progress-container" style="display:none;">
               <div class="progress-bar">
@@ -74,243 +79,95 @@
         </div>
       </section>
 
-      <!-- Help Section -->
-      <section class="section-card" id="section-help" data-section="help">
+      <section class="section-card active" id="section-search" data-section="search">
         <h2 class="section-header">
-          <span>Help</span>
+          <span>Analyze</span>
         </h2>
         <div class="section-content">
           <div class="pad">
-            <div style="font-size:13px; line-height:1.6; color:var(--muted)">
-              <h3 style="margin-top:0; font-size:15px; color:var(--ink)">Getting Started</h3>
-              <p>LogSieve runs entirely in your browser — no data is ever uploaded to a server. Click any section header
-                to expand it; only one section is open at a time. The Results section is always visible so you can see
-                your data while working.</p>
-              <p><strong>Workflow:</strong></p>
-              <ol style="margin:6px 0 12px 0; padding-left:20px">
-                <li><strong>Upload</strong> — load your log file</li>
-                <li><strong>Search Tools</strong> — configure filters, extractors, transformations, and columns</li>
-                <li><strong>Run Pipeline</strong> — execute your configured steps in order and review results</li>
-              </ol>
-
-              <details style="margin-top:0.75rem">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px; color:var(--ink); padding:4px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Upload</summary>
-                <div style="padding:8px 0 4px 16px">
-                  <p>Drag and drop a file onto the upload area, or click "Browse..." to select one. Supported formats:</p>
-                  <ul style="margin:6px 0; padding-left:20px">
-                    <li><strong>Plain text (.log, .txt)</strong> — auto-detects timestamps, log levels, and multi-line events like stack traces</li>
-                    <li><strong>JSON (.json)</strong> — structured JSON with automatic field mapping</li>
-                    <li><strong>NDJSON (.ndjson)</strong> — newline-delimited JSON for streaming logs</li>
-                    <li><strong>CSV (.csv)</strong> — tabular data with header row detection</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details style="margin-top:0.25rem">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px; color:var(--ink); padding:4px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Search Tools</summary>
-                <div style="padding:8px 0 4px 16px">
-                  <p style="margin-top:0">Use the tabs inside Search Tools to configure each type of pipeline step. Changes take effect when you click <strong>Run Pipeline</strong>.</p>
-
-                  <details style="margin-top:0.5rem">
-                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:var(--ink); padding:3px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Filters &amp; Sort</summary>
-                    <div style="padding:6px 0 2px 14px">
-                      <p>Build structured filter rules with the Query Builder, or use the Advanced Query for free-form searches. Both are pipeline steps that run in your configured order.</p>
-                      <ul style="margin:6px 0; padding-left:20px">
-                        <li><strong>Builder rules</strong> — Field + Operator + Value; chain rules with AND / OR</li>
-                        <li><strong>Advanced Query</strong> — free-form text, field search, regex, boolean logic (see syntax below)</li>
-                        <li><strong>Sort</strong> — by ID, timestamp, level, or any extracted field</li>
-                        <li><strong>Page Size</strong> — 25 – 200 results per page</li>
-                      </ul>
-                      <p style="margin-top:8px; font-weight:600; color:var(--ink)">Advanced Query syntax</p>
-                      <ul style="margin:4px 0; padding-left:20px">
-                        <li><code>field:value</code> &nbsp;·&nbsp; <code>level:ERROR</code></li>
-                        <li><code>AND</code>, <code>OR</code>, <code>NOT</code> &nbsp;·&nbsp; <code>(level:ERROR OR level:WARN) AND app:main</code></li>
-                        <li>Wildcards: <code>user:admin*</code></li>
-                        <li>Regex: <code>msg:/error \d+/</code> &nbsp; or quoted: <code>msg:"/fatal error/"</code></li>
-                        <li>Existence: <code>has:field</code>, <code>missing:field</code></li>
-                        <li>IN list: <code>level:IN(ERROR, WARN, INFO)</code></li>
-                        <li>Comparisons: <code>latency&gt;500</code>, <code>ts&lt;2025-01-01</code></li>
-                        <li>Bare words search the raw log line: <code>connection refused</code></li>
-                      </ul>
-                      <p style="margin-top:8px; font-weight:600; color:var(--ink)">Timestamps &amp; Timezones</p>
-                      <ul style="margin:4px 0; padding-left:20px">
-                        <li>Timestamps with a timezone (e.g. <code>2025-11-13T10:30:00Z</code>) are converted to your local timezone for display</li>
-                        <li>Naive timestamps (no timezone) are treated as local time</li>
-                        <li>Your detected timezone is shown above the results table</li>
-                      </ul>
-                    </div>
-                  </details>
-
-                  <details style="margin-top:0.25rem">
-                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:var(--ink); padding:3px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Extractor Library</summary>
-                    <div style="padding:6px 0 2px 14px">
-                      <p>Extract structured fields from unstructured text using named-group regex patterns like <code>(?&lt;user&gt;\w+)</code>.</p>
-                      <ul style="margin:6px 0; padding-left:20px">
-                        <li>Click <strong>+ New Extractor</strong> to define a pattern, then check it to activate it</li>
-                        <li><strong>Apply Scope</strong> — "All rows" or "Filtered rows"</li>
-                        <li><strong>Merge Strategy</strong> — Last Wins, First Wins, or Merge for overlapping field names</li>
-                        <li><strong>Quick Test</strong> — try a pattern without saving</li>
-                      </ul>
-                      <p>Extracted fields appear as sortable columns and export cleanly to CSV / JSON.</p>
-                    </div>
-                  </details>
-
-                  <details style="margin-top:0.25rem">
-                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:var(--ink); padding:3px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Transformations</summary>
-                    <div style="padding:6px 0 2px 14px">
-                      <p>Reusable row transformations that run as pipeline steps. Leave the target field blank to overwrite the source.</p>
-                      <ul style="margin:6px 0; padding-left:20px">
-                        <li><strong>JSON Parse</strong> — optional dot-notation path (e.g. <code>user.id</code>)</li>
-                        <li><strong>XML Extract Tag</strong> — extracts the first matching tag's text</li>
-                        <li><strong>URL Decode / Encode</strong> — standard URI component behavior</li>
-                        <li><strong>JavaScript Expression (Unsafe)</strong> — requires opt-in; use sparingly</li>
-                      </ul>
-                      <p>If a transformation fails for a row the original value is kept and processing continues.</p>
-                    </div>
-                  </details>
-
-                  <details style="margin-top:0.25rem">
-                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:var(--ink); padding:3px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Columns</summary>
-                    <div style="padding:6px 0 2px 14px">
-                      <p>Toggle column visibility and drag the ≡ handle to reorder. Changes are saved in your browser and respected by CSV / JSON exports.</p>
-                    </div>
-                  </details>
-
-                  <details style="margin-top:0.25rem">
-                    <summary style="cursor:pointer; font-weight:600; font-size:13px; color:var(--ink); padding:3px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Saved Filters</summary>
-                    <div style="padding:6px 0 2px 14px">
-                      <p>Save the current Builder rules + Advanced Query + sort order as a named preset. Load it later with "Load &amp; Apply" or "Load into Filters" to review before applying. Expand the Saved Filters panel to rename or delete presets.</p>
-                    </div>
-                  </details>
-                </div>
-              </details>
-
-              <details style="margin-top:0.25rem">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px; color:var(--ink); padding:4px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Run Pipeline</summary>
-                <div style="padding:8px 0 4px 16px">
-                  <p>The authoritative execution plan. Each enabled step runs top-to-bottom. Every run starts from the original parsed rows, so disabling or removing a step cleanly reverts its effect.</p>
-                  <ul style="margin:6px 0; padding-left:20px">
-                    <li><strong>Step types:</strong> Builder rules, Advanced Query, active Extractors, active Transformations</li>
-                    <li><strong>Reorder:</strong> drag steps — e.g. run extraction before a filter that depends on extracted fields</li>
-                    <li><strong>Enable / disable:</strong> use step checkboxes to skip steps without deleting them</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details style="margin-top:0.25rem">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px; color:var(--ink); padding:4px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Results</summary>
-                <div style="padding:8px 0 4px 16px">
-                  <p>Always visible. Above the table: Statistics (row counts by level), File Info, and a Timeline Sparkline. Click "raw" on any row to see the original log line.</p>
-                  <p><strong>Summary Statistics (Beta)</strong> — collapse and re-expand the panel to refresh after running the pipeline. Field types, distributions, and basic stats are best-effort.</p>
-                  <p style="margin-top:8px; font-weight:600; color:var(--ink)">Troubleshooting</p>
-                  <ul style="margin:4px 0; padding-left:20px">
-                    <li><strong>Timestamps off?</strong> — check whether your log has a trailing <code>Z</code> or timezone offset</li>
-                    <li><strong>Builder rule returns nothing</strong> — make sure the Value field is filled in</li>
-                    <li><strong>Regex not matching</strong> — test it in the Quick Test panel first</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details style="margin-top:0.25rem">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px; color:var(--ink); padding:4px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Import / Export</summary>
-                <div style="padding:8px 0 4px 16px">
-                  <ul style="margin:4px 0; padding-left:20px">
-                    <li><strong>Export Data</strong> — save filtered results as JSON or CSV via Tools → Data</li>
-                    <li><strong>Export Library</strong> — backup extractors, transformations, saved filters, and preferences via Tools → Library → Export</li>
-                    <li><strong>Import Library</strong> — load from a JSON file via Tools → Library → Import (merge or replace)</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details style="margin-top:0.25rem">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px; color:var(--ink); padding:4px 0; list-style:none; display:flex; align-items:center; gap:6px"><span class="help-toc-arrow">▶</span> Keyboard Shortcuts &amp; Theme</summary>
-                <div style="padding:8px 0 4px 16px">
-                  <ul style="margin:4px 0; padding-left:20px">
-                    <li><strong>ESC</strong> — close any open modal dialog</li>
-                  </ul>
-                  <p style="margin-top:8px">Click the 🌙/☀️ button in the top header to toggle dark / light theme. Your preference is saved automatically.</p>
-                </div>
-              </details>
+            <div class="workspace-intro">
+              <p class="workspace-title">Configure the analysis, then run it once.</p>
+              <p class="workspace-copy">Filters narrow rows. Extractors add structure. Transforms reshape fields. Columns controls what stays visible and what gets exported.</p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Search Tools (tabs) - collapsed by default -->
-      <section class="section-card" id="section-search" data-section="search">
-        <h2 class="section-header">
-          <span>Search Tools</span>
-        </h2>
-        <div class="section-content">
-          <div class="pad">
             <div class="tabs">
               <div class="tab-nav" role="tablist">
-                <button class="tab-btn active" role="tab" data-tab="help">Help</button>
-                <button class="tab-btn" role="tab" data-tab="filters">Filters & Sort</button>
-                <button class="tab-btn" role="tab" data-tab="extractors">Extractor Library</button>
-                <button class="tab-btn" role="tab" data-tab="transforms">Transformations</button>
+                <button class="tab-btn active" role="tab" data-tab="filters">Filters</button>
+                <button class="tab-btn" role="tab" data-tab="extractors">Extractors</button>
+                <button class="tab-btn" role="tab" data-tab="transforms">Transforms</button>
                 <button class="tab-btn" role="tab" data-tab="columns">Columns</button>
               </div>
               <div class="tab-panels">
-                <div class="tab-panel" id="tab-help" role="tabpanel"></div>
-                <div class="tab-panel" id="tab-filters" role="tabpanel" style="display:none"></div>
+                <div class="tab-panel" id="tab-filters" role="tabpanel"></div>
                 <div class="tab-panel" id="tab-extractors" role="tabpanel" style="display:none"></div>
                 <div class="tab-panel" id="tab-transforms" role="tabpanel" style="display:none"></div>
                 <div class="tab-panel" id="tab-columns" role="tabpanel" style="display:none">
                   <div class="pad">
                     <h3 style="margin-top:0; font-size:15px">Columns</h3>
-                    <p style="margin:6px 0 12px 0; color:var(--muted); font-size:13px">Toggle which columns are visible
-                      in the Results table.</p>
+                    <p style="margin:6px 0 12px 0; color:var(--muted); font-size:13px">Toggle which columns are visible in the Results table.</p>
                     <div id="columnsList" class="library-list">
-                      <div class="empty-state">No columns available yet. Load a file or run extractors to populate
-                        columns.</div>
+                      <div class="empty-state">No columns available yet. Load a file or run extractors to populate columns.</div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+            <div class="analysis-footer">
+              <div class="analysis-toolbar">
+                <div>
+                  <div class="analysis-label">Pipeline</div>
+                  <div class="analysis-summary" id="analysisSummary">Add filters, extractors, or transforms to build your analysis.</div>
+                </div>
+                <button class="btn primary" id="runPipelineBtn" title="Run the configured pipeline in the current order">Run Pipeline</button>
+              </div>
+              <details class="subpanel pipeline-review">
+                <summary>Review pipeline order</summary>
+                <p class="subpanel-copy">Every run starts from the original parsed rows. Drag steps to reorder them, or uncheck a step to skip it without deleting it.</p>
+                <div id="pipelineProgress" class="progress-container" style="display:none; margin-bottom:10px;">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="pipelineProgressFill"></div>
+                  </div>
+                  <div class="progress-text" id="pipelineProgressText">Running pipeline...</div>
+                </div>
+                <div id="pipelineList" class="library-list">
+                  <div class="empty-state">No pipeline steps yet. Add filter rules, extractors, or transformations.</div>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- Upload Section: moved to top to prioritize file selection -->
-
-      <!-- Filters & Sort Section -->
       <section class="section-card" id="section-filters" data-section="filters">
         <h2 class="section-header">
-          <span>Filters & Sort</span>
+          <span>Filters and Sort</span>
         </h2>
         <div class="section-content">
           <div class="pad">
-            <!-- Saved Filters - collapsed by default and integrated into Filters & Sort -->
-            <details id="savedFiltersDetails" style="margin-bottom:10px">
-              <summary>Saved Filters</summary>
-              <div style="margin-top:8px">
-                <div style="margin-top:8px" id="savedFilterActions">
-                  <button class="btn" id="loadSavedFilter">Load into Filters</button>
-                  <button class="btn ghost" id="applySavedFilter">Load & Apply</button>
-                </div>
-                <div id="savedFilterProgress" class="progress-container" style="display:none; margin-top:8px;">
-                  <div class="progress-bar">
-                    <div class="progress-fill" id="savedFilterProgressFill"></div>
-                  </div>
-                  <div class="progress-text" id="savedFilterProgressText">Applying saved filter...</div>
-                </div>
-                <div id="filterList" class="library-list" style="margin-top:12px"></div>
-              </div>
-            </details>
-            <!-- Saved filter selector below the collapsed section (always visible) -->
+            <div class="section-note">
+              Start with builder rules. Open Advanced Query only if you need field syntax, regex, or boolean logic.
+            </div>
             <div style="margin-bottom:12px">
-              <label class="wide">Choose a saved filter
-                <select id="savedFilterSelect" style="width:100%; margin-top:6px">
+              <label class="wide">Saved filter
+                <select id="savedFilterSelect" class="full-select">
                   <option value="">-- Select saved filter --</option>
                 </select>
               </label>
             </div>
-            <div class="flex" style="margin-top:10px">
-              <span class="right pill" id="info">—</span>
+            <div class="flex" id="savedFilterActions" style="margin-bottom:12px">
+              <button class="btn" id="loadSavedFilter">Load into Filters</button>
+              <button class="btn ghost" id="applySavedFilter">Load and Apply</button>
+              <button class="btn ghost" id="saveCurrentFilter" title="Save the current filter settings as a preset">Save Current Filter</button>
+              <span class="right pill" id="filterLibInfo">-</span>
             </div>
-            <!-- Query Builder (initially hidden until toggled) -->
+            <div id="savedFilterProgress" class="progress-container" style="display:none; margin-top:8px;">
+              <div class="progress-bar">
+                <div class="progress-fill" id="savedFilterProgressFill"></div>
+              </div>
+              <div class="progress-text" id="savedFilterProgressText">Applying saved filter...</div>
+            </div>
+            <div class="flex" style="margin-top:10px">
+              <span class="right pill" id="info">-</span>
+            </div>
             <div id="filterBuilder" style="margin-top:16px; display:block;">
               <div id="rulesContainer"></div>
               <div style="margin-top:8px">
@@ -319,33 +176,21 @@
               </div>
               <div id="builderPreview" style="margin-top:10px; font-family:monospace; color:var(--muted)"></div>
             </div>
-            <!-- Advanced Query: full width below the builder -->
-            <div style="margin-top:18px">
-              <label class="wide"> Advanced Text Query (applied in addition to Builder)
-                <textarea id="textQuery" placeholder="Enter advanced query syntax (e.g. level:ERROR AND user:alice)"
-                  rows="3" style="width:100%; box-sizing:border-box; resize:vertical;"></textarea>
-              </label>
-              <div id="queryFields" style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap"></div>
-              <div id="queryError" style="color: #ffb4b4; font-size:12px; margin-top:6px"></div>
-            </div>
             <div class="controls">
-              <!-- Advanced Query moved below the Builder; use it for complex text/regex conditions -->
-              <!-- Level/From/To moved into Builder rules; use the builder to restrict by level and time -->
-              <!-- Regex moved to Advanced Query details -->
-              <label> Sort
+              <label>Sort
                 <select id="sort">
                   <option value="id">ID</option>
                   <option value="ts">Timestamp</option>
                   <option value="level">Level</option>
                 </select>
               </label>
-              <label> Order
+              <label>Order
                 <select id="order">
                   <option value="desc">Desc</option>
                   <option value="asc">Asc</option>
                 </select>
               </label>
-              <label> Page size
+              <label>Page size
                 <select id="per">
                   <option>25</option>
                   <option selected>50</option>
@@ -360,21 +205,26 @@
               </div>
               <div class="progress-text" id="filterProgressText">Applying filters...</div>
             </div>
+            <details class="subpanel" style="margin-top:18px">
+              <summary>Advanced Query</summary>
+              <p class="subpanel-copy">Use this for free-form field queries, regex, AND/OR/NOT logic, or <code>field:value</code> syntax.</p>
+              <label class="wide">Advanced Text Query
+                <textarea id="textQuery" placeholder="Enter advanced query syntax (e.g. level:ERROR AND user:alice)" rows="3" style="width:100%; box-sizing:border-box; resize:vertical;"></textarea>
+              </label>
+              <div id="queryFields" style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap"></div>
+              <div id="queryError" style="color:#ffb4b4; font-size:12px; margin-top:6px"></div>
+            </details>
+            <details id="savedFiltersDetails" class="subpanel" style="margin-top:12px">
+              <summary>Manage Saved Filters</summary>
+              <div id="filterList" class="library-list" style="margin-top:12px"></div>
+            </details>
             <div class="flex" style="margin-top:18px">
               <button class="btn ghost" id="clear">Clear filters</button>
-            </div>
-
-            <!-- Save Current Filter moved to bottom of Filters & Sort -->
-            <div class="flex" style="margin-top:12px">
-              <button class="btn" id="saveCurrentFilter" title="Save the current filter settings as a preset">Save
-                Current Filter</button>
-              <span class="right pill" id="filterLibInfo">—</span>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Extractor Library Section -->
       <section class="section-card" id="section-extractors" data-section="extractors">
         <h2 class="section-header">
           <span>Extractor Library</span>
@@ -383,13 +233,13 @@
           <div class="pad">
             <div class="flex" style="margin-bottom:10px">
               <button class="btn" id="addExtractor" title="Create a new regex extractor">+ New Extractor</button>
-              <label style="margin-left:10px"> Apply to
+              <label style="margin-left:10px">Apply to
                 <select id="extractScope" title="Choose whether to apply extractors to all rows or only filtered rows">
                   <option value="all">All rows</option>
                   <option value="filtered">Filtered rows</option>
                 </select>
               </label>
-              <span class="right pill" id="extractInfo">—</span>
+              <span class="right pill" id="extractInfo">-</span>
             </div>
             <div id="extractorProgress" class="progress-container" style="display:none;">
               <div class="progress-bar">
@@ -397,43 +247,39 @@
               </div>
               <div class="progress-text" id="extractorProgressText">Running extractors...</div>
             </div>
-
-            <div class="controls" style="margin-bottom:10px">
-              <label> Merge Strategy
-                <select id="mergeStrategy" title="How to handle when multiple extractors capture the same field">
-                  <option value="last-wins">Last Wins - Later extractors override earlier ones</option>
-                  <option value="first-wins">First Wins - Keep first captured value, skip later ones</option>
-                  <option value="merge">Merge - Combine all values (same as last-wins)</option>
-                </select>
-              </label>
-              <div style="font-size:0.85em; color:var(--muted); margin-top:5px; line-height:1.4">
-                When multiple active extractors capture the same field name, this setting determines which value is
-                kept.
-              </div>
-            </div>
-
             <div id="extractorList" class="library-list">
               <div class="empty-state">No extractors saved. Click "+ New Extractor" to create one.</div>
             </div>
-
-            <details style="margin-top:15px">
-              <summary style="cursor:pointer; font-weight:500">Quick Test (one-time pattern)</summary>
+            <details class="subpanel" style="margin-top:15px">
+              <summary>Extractor options</summary>
               <div class="controls" style="margin-top:10px">
-                <label class="wide"> Pattern
-                  <input type="text" id="extractPattern"
-                    placeholder="^\[(?<ts>[^\]]+)\]\s(?<level>\w+)\s(?<message>.*)$" />
+                <label>Merge Strategy
+                  <select id="mergeStrategy" title="How to handle when multiple extractors capture the same field">
+                    <option value="last-wins">Last Wins - Later extractors override earlier ones</option>
+                    <option value="first-wins">First Wins - Keep first captured value, skip later ones</option>
+                    <option value="merge">Merge - Combine all values (same as last-wins)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="subpanel-copy" style="margin-top:8px">
+                When multiple active extractors capture the same field name, this setting determines which value is kept.
+              </div>
+            </details>
+            <details class="subpanel" style="margin-top:15px">
+              <summary>Quick Test</summary>
+              <div class="controls" style="margin-top:10px">
+                <label class="wide">Pattern
+                  <input type="text" id="extractPattern" placeholder="^\[(?<ts>[^\]]+)\]\s(?<level>\w+)\s(?<message>.*)$" />
                 </label>
               </div>
               <div class="flex" style="margin-top:10px">
                 <button class="btn" id="runExtract">Test Pattern</button>
               </div>
             </details>
-
           </div>
         </div>
       </section>
 
-      <!-- Transformations Section -->
       <section class="section-card" id="section-transforms" data-section="transforms">
         <h2 class="section-header">
           <span>Transformations</span>
@@ -441,13 +287,13 @@
         <div class="section-content">
           <div class="pad">
             <div class="controls" style="margin-top:10px">
-              <label> Name
+              <label>Name
                 <input type="text" id="transformName" placeholder="Parse payload JSON" />
               </label>
-              <label> Source Field
+              <label>Source Field
                 <input type="text" id="transformSource" placeholder="payload / raw / message / any field" />
               </label>
-              <label> Operation
+              <label>Operation
                 <select id="transformOp">
                   <option value="json-parse">JSON Parse</option>
                   <option value="xml-tag">XML Extract Tag</option>
@@ -456,61 +302,33 @@
                   <option value="js">JavaScript Expression (Unsafe)</option>
                 </select>
               </label>
-              <label> Option (path/tag/js expression)
-                <input type="text" id="transformOption"
-                  placeholder="json path e.g. user.id, xml tag e.g. id, or JS expression e.g. value.trim()" />
+              <label>Option (path/tag/js expression)
+                <input type="text" id="transformOption" placeholder="json path e.g. user.id, xml tag e.g. id, or JS expression e.g. value.trim()" />
               </label>
-              <label> Target Field (optional)
+              <label>Target Field (optional)
                 <input type="text" id="transformTarget" placeholder="leave blank to overwrite source" />
               </label>
             </div>
             <div class="flex" style="margin-top:10px">
               <button class="btn" id="addTransform" type="button">+ Add Transform</button>
               <button class="btn ghost" id="cancelTransformEdit" type="button" style="display:none">Cancel Edit</button>
-              <label style="display:flex; align-items:center; gap:6px; margin-left:10px; font-size:0.9em; color:var(--muted)">
-                <input type="checkbox" id="unsafeJsTransforms" /> Enable Unsafe JS transforms
-              </label>
-            </div>
-            <div style="font-size:0.85em; color:var(--muted); margin-top:6px; line-height:1.4">
-              JS expressions are executed in a worker with limits, but still unsafe for untrusted input.
             </div>
             <div id="transformList" class="library-list" style="margin-top:10px">
               <div class="empty-state">No transformations saved. Add one above.</div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Run Pipeline Section -->
-      <section class="section-card" id="section-pipeline" data-section="pipeline">
-        <h2 class="section-header">
-          <span>Run Pipeline</span>
-        </h2>
-        <div class="section-content">
-          <div class="pad">
-            <p style="margin:6px 0 12px 0; color:var(--muted); font-size:13px">Drag to reorder the execution flow.
-              Pipeline always re-runs from original parsed rows.</p>
-            <div id="pipelineProgress" class="progress-container" style="display:none; margin-bottom:10px;">
-              <div class="progress-bar">
-                <div class="progress-fill" id="pipelineProgressFill"></div>
+            <details class="subpanel" style="margin-top:14px">
+              <summary>Unsafe JS transform option</summary>
+              <label style="display:flex; align-items:center; gap:6px; margin-top:12px; font-size:0.9em; color:var(--muted)">
+                <input type="checkbox" id="unsafeJsTransforms" /> Enable Unsafe JS transforms
+              </label>
+              <div class="subpanel-copy" style="margin-top:8px">
+                JS expressions run in a worker with limits, but they are still unsafe for untrusted input.
               </div>
-              <div class="progress-text" id="pipelineProgressText">Running pipeline...</div>
-            </div>
-            <div id="pipelineList" class="library-list">
-              <div class="empty-state">No pipeline steps yet. Add filter rules, extractors, or transformations.</div>
-            </div>
-            <div class="flex" style="margin-top:10px">
-              <button class="btn" id="runPipelineBtn" title="Run the configured pipeline in the current order">▶ Run Pipeline</button>
-            </div>
+            </details>
           </div>
         </div>
       </section>
 
-      <!-- Saved Filters moved into Filters & Sort (UI updated below) -->
-
-      <!-- Summary merged into Results (see below) -->
-
-      <!-- Results Section (Always Visible) -->
       <section class="section-card always-visible" id="section-results" data-section="results">
         <h2 class="section-header">
           <span>Results</span>
@@ -554,22 +372,21 @@
             <div style="margin-bottom:12px"><canvas id="spark"></canvas></div>
             <div class="flex" style="margin-bottom:8px">
               <div class="pagination">
-                <button class="btn" id="first">⏮</button>
-                <button class="btn" id="prev">◀</button>
+                <button class="btn" id="first">|&lt;</button>
+                <button class="btn" id="prev">&lt;</button>
                 <span class="pill" id="pageLabel">1 / 1</span>
-                <button class="btn" id="next">▶</button>
-                <button class="btn" id="last">⏭</button>
+                <button class="btn" id="next">&gt;</button>
+                <button class="btn" id="last">&gt;|</button>
               </div>
-              <span class="right pill" id="renderInfo">—</span>
+              <span class="right pill" id="renderInfo">-</span>
             </div>
-            <div id="tzInfo" style="font-size:12px; color:var(--muted); margin-bottom:8px;">Times shown in UTC by
-              default</div>
+            <div id="tzInfo" style="font-size:12px; color:var(--muted); margin-bottom:8px;">Times shown in UTC by default</div>
             <div class="table-container">
               <table>
                 <thead>
                   <tr id="thead-row">
                     <th style="width:72px">ID</th>
-                    <th style="width:210px">Timestamp (<span id="tzLabel">local</span>)</th>
+                    <th style="width:210px">Timestamp</th>
                     <th style="width:120px">Level</th>
                     <th>Message</th>
                   </tr>
@@ -583,7 +400,6 @@
     </main>
   </div>
 
-  <!-- Extractor Modal -->
   <div id="extractorModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -595,8 +411,7 @@
           <input type="text" id="extractorName" placeholder="e.g., Apache Access Log" />
         </label>
         <label>Pattern (regex with named groups)
-          <textarea id="extractorPattern" rows="3"
-            placeholder="^\[(?<ts>[^\]]+)\]\s(?<level>\w+)\s(?<message>.*)$"></textarea>
+          <textarea id="extractorPattern" rows="3" placeholder="^\[(?<ts>[^\]]+)\]\s(?<level>\w+)\s(?<message>.*)$"></textarea>
         </label>
         <label>Description (optional)
           <input type="text" id="extractorDesc" placeholder="Brief description of what this extracts" />
@@ -613,7 +428,6 @@
     </div>
   </div>
 
-  <!-- Filter Modal -->
   <div id="filterModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -639,8 +453,8 @@
     </div>
   </div>
 
-  <script src="shared.js"></script>
-  <script src="logsieve.js"></script>
+  <script src="shared.js?v=20260728b"></script>
+  <script src="logsieve.js?v=20260728b"></script>
 </body>
 
 </html>

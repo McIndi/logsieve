@@ -683,7 +683,8 @@ if (isWorker) {
             transforms = [],
             scope,
             mergeStrategy = 'last-wins',
-            transformRuntime = {}
+            transformRuntime = {},
+            mode = 'standard'
           } = data;
           const targetRows = scope === 'filtered' ? view : rows;
           const progressCallback = (percent, message) => {
@@ -698,12 +699,16 @@ if (isWorker) {
 
           // Update field registry after extraction
           FieldRegistry.updateFromDataset(rows);
+          const stats = computeStats();
 
           self.postMessage({
             type: 'EXTRACTORS_COMPLETE',
             data: {
+              mode,
               results,
               transformResults,
+              viewLength: view.length,
+              stats,
               newFieldNames: [...fieldNames],
               fieldRegistry: FieldRegistry.serialize()
             },

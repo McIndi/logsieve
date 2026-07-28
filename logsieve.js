@@ -367,6 +367,7 @@ const userTimeZone = (Intl && Intl.DateTimeFormat && Intl.DateTimeFormat().resol
 let sortByIdOrder = 'asc';
 let editingTransformId = null;
 let pipelineOrder = [];
+let transientQuickTestExtractor = null;
 
 // ---------- Worker Communication ----------
 
@@ -379,7 +380,7 @@ let pendingRequests = new Map(); // Track pending worker requests
 function initWorker() {
   if (worker) return; // Already initialized
 
-  worker = new Worker('logsieve-worker.js');
+  worker = new Worker('logsieve-worker.js?v=20260728b');
   worker.onmessage = handleWorkerMessage;
   worker.onerror = handleWorkerError;
 }
@@ -404,6 +405,7 @@ function handleWorkerMessage(e) {
   switch (type) {
     case 'PARSE_COMPLETE':
       // rows = data.rows || []; // Worker no longer sends full rows for performance
+      transientQuickTestExtractor = null;
       fieldNames = new Set(data.fieldNames || []);
       if (data.fieldRegistry) {
         FieldRegistry.deserialize(data.fieldRegistry);
@@ -431,6 +433,7 @@ function handleWorkerMessage(e) {
       $("#filterProgress").style.display = 'none';
       $("#savedFilterProgress").style.display = 'none';
       render();
+      refreshSummaryIfOpen();
       break;
 
     case 'PIPELINE_COMPLETE':
@@ -451,6 +454,7 @@ function handleWorkerMessage(e) {
       renderPipelineList();
       renderTransformErrorAlert(data.transformResults || null);
       render();
+      refreshSummaryIfOpen();
       break;
 
     case 'EXTRACTORS_COMPLETE':
@@ -471,7 +475,13 @@ function handleWorkerMessage(e) {
       renderQueryFields();
       renderPipelineList();
       renderTransformErrorAlert(data.transformResults || null);
-      applyFilters();
+      if (data.mode === 'quick-test') {
+        totalRows = data.viewLength || totalRows;
+        render();
+        refreshSummaryIfOpen();
+      } else {
+        applyFilters();
+      }
       break;
 
     case 'PAGE_DATA':
@@ -577,6 +587,11 @@ function renderTransformErrorAlert(transformResults) {
   el.style.display = 'block';
 }
 
+function refreshSummaryIfOpen() {
+  const summary = $("#summary-details");
+  if (summary?.open) computeSummaryStats();
+}
+
 /**
  * Handle worker errors
  */
@@ -654,7 +669,8 @@ function savePipelineOrderToPrefs() {
   Storage.savePrefs(prefs);
 }
 
-function buildPipelineSteps() {
+function buildPipelineSteps(options = {}) {
+  const { includeTransientQuickTest = false } = options;
   const steps = [];
   const prefs = Storage.getPrefs() || {};
 
@@ -693,6 +709,17 @@ function buildPipelineSteps() {
       enabled: ext.enabled !== false,
       mergeStrategy: prefs.extractorMergeStrategy || 'last-wins',
       extractor: ext
+    });
+  }
+
+  if (includeTransientQuickTest && transientQuickTestExtractor?.extractor) {
+    steps.push({
+      key: 'extractor:quick-test',
+      type: 'extractor',
+      label: 'Extractor: Quick Test',
+      enabled: true,
+      mergeStrategy: transientQuickTestExtractor.mergeStrategy || prefs.extractorMergeStrategy || 'last-wins',
+      extractor: transientQuickTestExtractor.extractor
     });
   }
 
@@ -735,6 +762,7 @@ function renderPipelineList() {
   const steps = buildPipelineSteps();
   if (steps.length === 0) {
     list.innerHTML = '<div class="empty-state">No pipeline steps yet. Add filter rules, extractors, or transformations.</div>';
+    updateAnalysisSummary(steps);
     return;
   }
 
@@ -813,6 +841,28 @@ function renderPipelineList() {
     }
     return closest.element;
   }
+
+  updateAnalysisSummary(steps);
+}
+
+function updateAnalysisSummary(steps = buildPipelineSteps()) {
+  const el = $("#analysisSummary");
+  if (!el) return;
+
+  const counts = {
+    filters: steps.filter(step => step.type === 'filter-rule' || step.type === 'advanced-query').length,
+    extractors: steps.filter(step => step.type === 'extractor').length,
+    transforms: steps.filter(step => step.type === 'transform').length
+  };
+
+  const parts = [];
+  if (counts.filters) parts.push(`${counts.filters} filter${counts.filters === 1 ? '' : 's'}`);
+  if (counts.extractors) parts.push(`${counts.extractors} extractor${counts.extractors === 1 ? '' : 's'}`);
+  if (counts.transforms) parts.push(`${counts.transforms} transform${counts.transforms === 1 ? '' : 's'}`);
+
+  el.textContent = parts.length
+    ? `Ready to run: ${parts.join(', ')}.`
+    : 'Add filters, extractors, or transforms to build your analysis.';
 }
 
 function runPipeline(operation = 'pipeline') {
@@ -822,7 +872,9 @@ function runPipeline(operation = 'pipeline') {
   };
 
   const prefs = Storage.getPrefs();
-  const steps = buildPipelineSteps();
+  const steps = buildPipelineSteps({
+    includeTransientQuickTest: operation !== 'pipeline' && !!transientQuickTestExtractor
+  });
 
   const progress = $("#pipelineProgress");
   const progressFill = $("#pipelineProgressFill");
@@ -872,6 +924,31 @@ function render() {
   sendToWorker('GET_PAGE', { page, per });
 }
 
+function getSortValueForColumn(col) {
+  if (['id', 'ts', 'level', 'message'].includes(col)) return col;
+  return `field:${col}`;
+}
+
+function getSortArrow(sortValue, currentSort, currentOrder) {
+  if (sortValue !== currentSort) return '';
+  return currentOrder === 'asc' ? ' ▲' : ' ▼';
+}
+
+function handleSortHeaderClick(sortValue) {
+  const sortSelect = $("#sort");
+  const orderSelect = $("#order");
+  if (!sortSelect || !orderSelect) return;
+
+  const currentSort = sortSelect.value;
+  const currentOrder = orderSelect.value;
+  const nextOrder = currentSort === sortValue && currentOrder === 'asc' ? 'desc' : 'asc';
+
+  sortSelect.value = sortValue;
+  orderSelect.value = nextOrder;
+  if (sortValue === 'id') sortByIdOrder = nextOrder;
+  applyFilters();
+}
+
 /**
  * Render a specific page of data
  */
@@ -884,6 +961,9 @@ function renderPage(pageData) {
   // Update table headers with dynamic field columns using user-defined columnOrder
   const order = getCurrentColumnOrder();
   const displayedCols = order.filter(c => isColumnVisible(c));
+  const currentSort = $("#sort")?.value || 'id';
+  const currentOrder = $("#order")?.value || 'desc';
+  if (currentSort === 'id') sortByIdOrder = currentOrder;
 
   // Build header cells matching displayed columns
   const headerHtml = displayedCols.map(col => {
@@ -1274,6 +1354,58 @@ function renderQueryFields() {
  * Legacy: Run extractor from manual input (for backwards compatibility)
  */
 function runExtractor() {
+  const quickPattern = $("#extractPattern").value.trim();
+  if (!quickPattern) {
+    alert('Provide a named-group regex.');
+    return;
+  }
+
+  if (!worker) {
+    alert('Processing is not ready yet.');
+    return;
+  }
+
+  if (!$("#fileTag") || $("#fileTag").textContent === 'no file') {
+    alert('Load a file before testing a pattern.');
+    return;
+  }
+
+  const prefs = Storage.getPrefs();
+  const mergeStrategy = prefs.extractorMergeStrategy || 'last-wins';
+  const scope = $("#extractScope").value;
+  transientQuickTestExtractor = {
+    extractor: {
+      id: 'quick-test',
+      name: 'Quick Test',
+      pattern: quickPattern,
+      enabled: true
+    },
+    mergeStrategy,
+    scope
+  };
+  const extractorProgress = $("#extractorProgress");
+  const extractorProgressFill = $("#extractorProgressFill");
+  const extractorProgressText = $("#extractorProgressText");
+  if (extractorProgress && extractorProgressFill && extractorProgressText) {
+    extractorProgress.style.display = 'block';
+    extractorProgressFill.style.width = '0%';
+    extractorProgressText.textContent = 'Testing pattern...';
+  }
+
+  sendToWorker('RUN_EXTRACTORS', {
+    mode: 'quick-test',
+    extractors: [transientQuickTestExtractor.extractor],
+    transforms: [],
+    scope,
+    mergeStrategy,
+    transformRuntime: {
+      unsafeMode: !!prefs.unsafeJsTransforms,
+      maxTotalMs: 2500,
+      maxOutputLength: 100000
+    }
+  });
+  return;
+  /*
   const pattern = $("#extractPattern").value.trim();
   if (!pattern) {
     alert('Provide a named‑group regex.');
@@ -1288,6 +1420,7 @@ function runExtractor() {
   $("#extractInfo").textContent = `Applied to ${fmt(scope.length)} rows · ${fmt(hits)} with captures`;
   updateSortOptions();
   applyFilters();
+  */
 }
 
 // ---------- File Handling ----------
@@ -2361,10 +2494,10 @@ function toggleSection(header) {
 
 /**
  * Show a specific tab inside the Search Tools collapsible
- * @param {string} tab - 'help' | 'filters' | 'extractors' | 'transforms' | 'columns'
+ * @param {string} tab - 'filters' | 'extractors' | 'transforms' | 'columns'
  */
 function showSearchTab(tab) {
-  const t = tab || 'help';
+  const t = tab || 'filters';
   const allBtns = document.querySelectorAll('.tab-btn');
   allBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === t));
 
@@ -2769,15 +2902,16 @@ $("#summary-details").addEventListener('toggle', () => {
  * Move the content of existing top-level sections into tab panels and remove originals
  */
 function moveSearchContentIntoTabs() {
-  const names = ['help', 'filters', 'extractors', 'transforms'];
+  const names = ['filters', 'extractors', 'transforms'];
   names.forEach(name => {
     const old = document.getElementById(`section-${name}`);
     const panel = document.getElementById(`tab-${name}`);
     if (old && panel) {
       const content = old.querySelector('.section-content');
       if (content) {
-        // Move the existing DOM node so event listeners are preserved
-        panel.appendChild(content);
+        const contentBody = content.firstElementChild || content;
+        // Move the existing DOM node so event listeners are preserved.
+        panel.appendChild(contentBody);
       }
       // Remove the old section node so it's not duplicated (content already moved)
       if (old.parentNode) old.parentNode.removeChild(old);
@@ -2792,8 +2926,8 @@ function moveSearchContentIntoTabs() {
     });
   });
 
-  // Default to Help tab
-  showSearchTab('help');
+  // Default to Filters tab
+  showSearchTab('filters');
 }
 
 // ---------- Settings ----------
@@ -3000,4 +3134,128 @@ function renderSummaryStats(stats) {
   }
   container.innerHTML = html;
   $("#summary-progress").style.display = 'none';
+}
+
+// Clean overrides for column sorting. These supersede the legacy implementations above.
+function getSortArrow(sortValue, currentSort, currentOrder) {
+  if (sortValue !== currentSort) return '';
+  return currentOrder === 'asc' ? ' ^' : ' v';
+}
+
+function handleSortHeaderClick(sortValue) {
+  const sortSelect = $("#sort");
+  const orderSelect = $("#order");
+  if (!sortSelect || !orderSelect) return;
+
+  if (![...sortSelect.options].some(opt => opt.value === sortValue)) {
+    updateSortOptions();
+  }
+  if (![...sortSelect.options].some(opt => opt.value === sortValue)) {
+    const label = sortValue.startsWith('field:') ? sortValue.slice(6) : sortValue;
+    sortSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(sortValue)}">${escapeHtml(label)}</option>`);
+  }
+
+  const currentSort = sortSelect.value;
+  const currentOrder = orderSelect.value;
+  const nextOrder = currentSort === sortValue && currentOrder === 'asc' ? 'desc' : 'asc';
+
+  sortSelect.value = sortValue;
+  orderSelect.value = nextOrder;
+  if (sortValue === 'id') sortByIdOrder = nextOrder;
+  applyFilters();
+}
+
+function updateSortOptions() {
+  const sortSelect = $("#sort");
+  const currentValue = sortSelect.value;
+  const sortedFields = [...fieldNames].sort();
+
+  sortSelect.innerHTML = `
+    <option value="id">ID</option>
+    <option value="ts">Timestamp</option>
+    <option value="level">Level</option>
+    <option value="message">Message</option>
+    ${sortedFields.map(f => `<option value="field:${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')}
+  `;
+
+  if ([...sortSelect.options].some(opt => opt.value === currentValue)) {
+    sortSelect.value = currentValue;
+  }
+
+  mergeNewFieldsIntoOrder();
+  renderColumnsPanel();
+}
+
+function renderPage(pageData) {
+  const t0 = performance.now();
+  const body = $("#tbody");
+  const theadRow = $("#thead-row");
+  body.innerHTML = "";
+
+  const order = getCurrentColumnOrder();
+  const displayedCols = order.filter(c => isColumnVisible(c));
+  const currentSort = $("#sort")?.value || 'id';
+  const currentOrder = $("#order")?.value || 'desc';
+  if (currentSort === 'id') sortByIdOrder = currentOrder;
+
+  const headerHtml = displayedCols.map(col => {
+    const sortValue = getSortValueForColumn(col);
+    const arrow = getSortArrow(sortValue, currentSort, currentOrder);
+    const sortAttr = escapeHtml(sortValue);
+
+    if (col === 'id') {
+      return `<th style="width:72px; cursor:pointer" class="sortable-header" data-sort-value="id">ID${arrow}</th>`;
+    }
+    if (col === 'ts') {
+      return `<th style="width:210px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">Timestamp${arrow} <br/>(<span id="tzLabel">${escapeHtml(userTimeZone)}</span>)</th>`;
+    }
+    if (col === 'level') {
+      return `<th style="width:120px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">Level${arrow}</th>`;
+    }
+    if (col === 'message') {
+      return `<th style="max-width:80ch; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">Message${arrow}</th>`;
+    }
+    return `<th style="width:150px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">${escapeHtml(col)}${arrow}</th>`;
+  }).join('');
+
+  theadRow.innerHTML = headerHtml;
+  theadRow.querySelectorAll('.sortable-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const sortValue = header.dataset.sortValue;
+      if (!sortValue) return;
+      handleSortHeaderClick(sortValue);
+    });
+  });
+
+  const pageRows = pageData.pageRows;
+  const frag = document.createDocumentFragment();
+
+  for (const r of pageRows) {
+    const tr = document.createElement('tr');
+    const cellsHtml = displayedCols.map(col => {
+      if (col === 'id') return `<td>${r.id}</td>`;
+      if (col === 'ts') return `<td>${formatLocalDatetime(r.ts) || ''}</td>`;
+      if (col === 'level') return `<td><span class="lvl-${r.level}">${r.level || ''}</span></td>`;
+      if (col === 'message') return `<td><pre>${escapeHtml(r.message)}</pre><details><summary>raw</summary><pre>${escapeHtml(r.raw)}</pre></details></td>`;
+
+      const val = r.fields?.[col];
+      if (val === undefined || val === null) return '<td></td>';
+      if (Array.isArray(val)) {
+        if (val.length === 1) return `<td>${escapeHtml(val[0])}</td>`;
+        return `<td><code>${escapeHtml(JSON.stringify(val))}</code></td>`;
+      }
+      return `<td>${escapeHtml(String(val))}</td>`;
+    }).join('');
+
+    tr.innerHTML = cellsHtml;
+    frag.appendChild(tr);
+  }
+
+  body.appendChild(frag);
+  $("#pageLabel").textContent = `${pageData.currentPage} / ${pageData.totalPages}`;
+  $("#renderInfo").textContent = `${fmt(pageData.totalRows)} rows - showing ${fmt(pageRows.length)} - ${Math.round(performance.now() - t0)}ms`;
+  $("#countTag").textContent = `${fmt(pageData.totalRows)} lines`;
+
+  totalRows = pageData.totalRows;
+  sendToWorker('GET_STATS');
 }

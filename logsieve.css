@@ -1343,3 +1343,143 @@ canvas {
   
 /* Sidebar completely removed; no desktop collapsed state needed */
 }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover {
+  border-color: var(--accent);
+  background: #2563eb;
+}
+
+.quickstart-card,
+.workspace-intro,
+.section-note,
+.analysis-footer,
+.subpanel {
+  background: color-mix(in srgb, var(--panel) 92%, var(--accent) 8%);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.quickstart-card {
+  margin-top: 0.75rem;
+  padding: 0.875rem 1rem 0.75rem;
+}
+
+.quickstart-title,
+.workspace-title,
+.analysis-label {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.quickstart-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.quickstart-list li,
+.workspace-copy,
+.section-note,
+.analysis-summary,
+.subpanel-copy {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.workspace-intro {
+  margin-bottom: 0.875rem;
+  padding: 0.875rem 1rem;
+}
+
+.workspace-copy {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.section-note {
+  margin-bottom: 0.875rem;
+  padding: 0.75rem 0.875rem;
+  color: var(--muted);
+}
+
+.full-select {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.tab-nav {
+  gap: 0.5rem;
+  margin-bottom: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  border-radius: 999px;
+  padding: 0.5rem 0.875rem;
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tab-panel .section-content {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.analysis-footer {
+  margin-top: 1rem;
+  padding: 0.875rem;
+}
+
+.analysis-toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.analysis-summary {
+  margin-top: 0.2rem;
+  color: var(--ink);
+}
+
+.pipeline-review {
+  margin-top: 0.875rem;
+}
+
+.subpanel {
+  padding: 0.875rem;
+}
+
+.subpanel summary {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.subpanel-copy {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+}
+
+@media (max-width: 768px) {
+  .analysis-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .analysis-toolbar .btn {
+    width: 100%;
+  }
+}
