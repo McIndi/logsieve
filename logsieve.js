@@ -3038,6 +3038,125 @@ function closeDropdowns(e) {
   }
 }
 
+// ---------- Results Table: Right-click "Search for / Exclude" ----------
+
+/**
+ * Show a brief toast confirming a filter was added from the results table.
+ */
+function showResultsToast(message) {
+  let toast = document.getElementById('resultsToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'resultsToast';
+    toast.className = 'results-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(showResultsToast._t);
+  showResultsToast._t = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+/**
+ * Decide which field/operator pair to filter on for a given column + selected value.
+ * Falls back to a raw-line text search when the column's detected type has no
+ * contains/notContains operator (e.g. ts -> date, extracted numeric fields).
+ */
+function resolveContextFilterRule(col, value, exclude) {
+  // Level's builder UI only exposes equals/notEquals (it's an enum-like field),
+  // so match that instead of contains to keep the Filters tab dropdown accurate.
+  if (col === 'level') {
+    return { field: 'level', operator: exclude ? 'notEquals' : 'equals', value };
+  }
+  const meta = FieldRegistry.get(col);
+  const fieldType = meta?.type || 'text';
+  const supportsContains = (OPERATORS[fieldType] || OPERATORS.text).some(op => op.value === (exclude ? 'notContains' : 'contains'));
+  if (supportsContains) {
+    return { field: col, operator: exclude ? 'notContains' : 'contains', value };
+  }
+  // Fall back to searching the raw log line, which will contain the displayed text.
+  return { field: 'raw', operator: exclude ? 'notContains' : 'contains', value };
+}
+
+/**
+ * Wire up a right-click context menu on the Results table so users can
+ * highlight a value and quickly "Search for" or "Exclude" it, without
+ * needing to know the Filters/Builder UI.
+ */
+function initializeResultsContextMenu() {
+  const tbody = $('#tbody');
+  if (!tbody) return;
+
+  let menu = document.getElementById('resultsContextMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'resultsContextMenu';
+    menu.className = 'context-menu';
+    document.body.appendChild(menu);
+  }
+
+  function hideMenu() { menu.classList.remove('show'); }
+
+  tbody.addEventListener('contextmenu', (e) => {
+    const cell = e.target.closest('td[data-col]');
+    if (!cell) return;
+    const col = cell.dataset.col;
+    if (!col) return;
+
+    const selection = window.getSelection();
+    let text = '';
+    if (selection && !selection.isCollapsed && cell.contains(selection.anchorNode)) {
+      text = selection.toString().trim();
+    }
+    if (!text) text = (cell.textContent || '').trim();
+    if (!text) return;
+
+    e.preventDefault();
+
+    const displayText = text.length > 60 ? text.slice(0, 57) + '…' : text;
+    const fieldLabel = col === 'message' ? 'Message' : col === 'raw' ? 'Raw' : col === 'ts' ? 'Timestamp' : col;
+
+    menu.innerHTML = `
+      <button type="button" data-action="search">Search for &ldquo;${escapeHtml(displayText)}&rdquo;</button>
+      <button type="button" data-action="exclude">Exclude &ldquo;${escapeHtml(displayText)}&rdquo;</button>
+    `;
+
+    const menuWidth = 240;
+    const left = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${e.clientY}px`;
+    menu.classList.add('show');
+
+    menu.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const exclude = btn.dataset.action === 'exclude';
+        const { field, operator, value } = resolveContextFilterRule(col, text, exclude);
+        addRule({
+          id: generateUUID(),
+          field,
+          operator,
+          value,
+          logic: null,
+          enabled: true
+        });
+        renderBuilderUI();
+        applyFilters();
+        const opLabel = { contains: 'contains', notContains: 'does not contain', equals: 'is', notEquals: 'is not' }[operator] || operator;
+        showResultsToast(`Filter added: ${field} ${opLabel} "${displayText}"`);
+        hideMenu();
+      }, { once: true });
+    });
+  });
+
+  document.addEventListener('click', hideMenu);
+  document.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest('td[data-col]')) hideMenu();
+  });
+  document.addEventListener('scroll', hideMenu, true);
+  window.addEventListener('resize', hideMenu);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMenu(); });
+}
+
 /**
  * Initialize dropdown functionality
  */
@@ -3093,12 +3212,14 @@ if (document.readyState === 'loading') {
     initializeEventHandlers();
     initializeThemeToggle();
     initializeDropdowns();
+    initializeResultsContextMenu();
   });
 } else {
   initWorker();
   initializeEventHandlers();
   initializeThemeToggle();
   initializeDropdowns();
+  initializeResultsContextMenu();
 }
 
 // ---------- Summary Stats ----------
@@ -3204,18 +3325,18 @@ function renderPage(pageData) {
     const sortAttr = escapeHtml(sortValue);
 
     if (col === 'id') {
-      return `<th style="width:72px; cursor:pointer" class="sortable-header" data-sort-value="id">ID${arrow}</th>`;
+      return `<th style="width:72px; cursor:pointer" class="sortable-header" data-sort-value="id" data-col="id">ID${arrow}</th>`;
     }
     if (col === 'ts') {
-      return `<th style="width:210px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">Timestamp${arrow} <br/>(<span id="tzLabel">${escapeHtml(userTimeZone)}</span>)</th>`;
+      return `<th style="width:210px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}" data-col="ts">Timestamp${arrow} <br/>(<span id="tzLabel">${escapeHtml(userTimeZone)}</span>)</th>`;
     }
     if (col === 'level') {
-      return `<th style="width:120px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">Level${arrow}</th>`;
+      return `<th style="width:120px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}" data-col="level">Level${arrow}</th>`;
     }
     if (col === 'message') {
-      return `<th style="max-width:80ch; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">Message${arrow}</th>`;
+      return `<th style="max-width:80ch; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}" data-col="message">Message${arrow}</th>`;
     }
-    return `<th style="width:150px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}">${escapeHtml(col)}${arrow}</th>`;
+    return `<th style="width:150px; cursor:pointer" class="sortable-header" data-sort-value="${sortAttr}" data-col="${escapeHtml(col)}">${escapeHtml(col)}${arrow}</th>`;
   }).join('');
 
   theadRow.innerHTML = headerHtml;
@@ -3233,18 +3354,19 @@ function renderPage(pageData) {
   for (const r of pageRows) {
     const tr = document.createElement('tr');
     const cellsHtml = displayedCols.map(col => {
-      if (col === 'id') return `<td>${r.id}</td>`;
-      if (col === 'ts') return `<td>${formatLocalDatetime(r.ts) || ''}</td>`;
-      if (col === 'level') return `<td><span class="lvl-${r.level}">${r.level || ''}</span></td>`;
-      if (col === 'message') return `<td><pre>${escapeHtml(r.message)}</pre><details><summary>raw</summary><pre>${escapeHtml(r.raw)}</pre></details></td>`;
+      const colAttr = `data-col="${escapeHtml(col)}"`;
+      if (col === 'id') return `<td ${colAttr}>${r.id}</td>`;
+      if (col === 'ts') return `<td ${colAttr}>${formatLocalDatetime(r.ts) || ''}</td>`;
+      if (col === 'level') return `<td ${colAttr}><span class="lvl-${r.level}">${r.level || ''}</span></td>`;
+      if (col === 'message') return `<td ${colAttr}><pre>${escapeHtml(r.message)}</pre><details><summary>raw</summary><pre>${escapeHtml(r.raw)}</pre></details></td>`;
 
       const val = r.fields?.[col];
-      if (val === undefined || val === null) return '<td></td>';
+      if (val === undefined || val === null) return `<td ${colAttr}></td>`;
       if (Array.isArray(val)) {
-        if (val.length === 1) return `<td>${escapeHtml(val[0])}</td>`;
-        return `<td><code>${escapeHtml(JSON.stringify(val))}</code></td>`;
+        if (val.length === 1) return `<td ${colAttr}>${escapeHtml(val[0])}</td>`;
+        return `<td ${colAttr}><code>${escapeHtml(JSON.stringify(val))}</code></td>`;
       }
-      return `<td>${escapeHtml(String(val))}</td>`;
+      return `<td ${colAttr}>${escapeHtml(String(val))}</td>`;
     }).join('');
 
     tr.innerHTML = cellsHtml;
