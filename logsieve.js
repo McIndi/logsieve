@@ -998,9 +998,9 @@ const idHeader = theadRow.querySelector('.id-header');
 
     // Build cells in same order as headers
     const cellsHtml = displayedCols.map(col => {
-      if (col === 'id') return `<td>${r.id}</td>`;
-      else if (col === 'ts') return `<td>${formatLocalDatetime(r.ts) || ''}</td>`;
-      else if (col === 'level') return `<td><span class="lvl-${r.level}">${r.level || ''}</span></td>`;
+      if (col === 'id') return `<td>${escapeText(r.id)}</td>`;
+      else if (col === 'ts') return `<td>${escapeText(formatLocalDatetime(r.ts))}</td>`;
+      else if (col === 'level') return `<td><span class="lvl-${escapeText(r.level)}">${escapeText(r.level)}</span></td>`;
       else if (col === 'message') return `<td><pre>${escapeHtml(r.message)}</pre><details><summary>raw</summary><pre>${escapeHtml(r.raw)}</pre></details></td>`;
 
       const val = r.fields?.[col];
@@ -3355,9 +3355,9 @@ function renderPage(pageData) {
     const tr = document.createElement('tr');
     const cellsHtml = displayedCols.map(col => {
       const colAttr = `data-col="${escapeHtml(col)}"`;
-      if (col === 'id') return `<td ${colAttr}>${r.id}</td>`;
-      if (col === 'ts') return `<td ${colAttr}>${formatLocalDatetime(r.ts) || ''}</td>`;
-      if (col === 'level') return `<td ${colAttr}><span class="lvl-${r.level}">${r.level || ''}</span></td>`;
+      if (col === 'id') return `<td ${colAttr}>${escapeText(r.id)}</td>`;
+      if (col === 'ts') return `<td ${colAttr}>${escapeText(formatLocalDatetime(r.ts))}</td>`;
+      if (col === 'level') return `<td ${colAttr}><span class="lvl-${escapeText(r.level)}">${escapeText(r.level)}</span></td>`;
       if (col === 'message') return `<td ${colAttr}><pre>${escapeHtml(r.message)}</pre><details><summary>raw</summary><pre>${escapeHtml(r.raw)}</pre></details></td>`;
 
       const val = r.fields?.[col];

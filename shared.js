@@ -47,6 +47,16 @@ function escapeHtml(s) {
 }
 
 /**
+ * Escape any value for HTML text or quoted-attribute context.
+ * Coerces null/undefined to '' and other non-strings via String().
+ * @param {*} v - Value to escape
+ * @returns {string} - HTML-escaped string
+ */
+function escapeText(v) {
+    return escapeHtml(v === null || v === undefined ? '' : String(v));
+}
+
+/**
  * Tokenize string for search purposes
  * @param {string} s - String to tokenize
  * @returns {Array<string>} - Array of tokens
