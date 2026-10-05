@@ -77,7 +77,8 @@ Playwright 1.58.2 image and matching test-only dependency. The browser job follo
 the unit job to limit concurrent resource use. The unit job also verifies that
 empty test runs fail and exercises the branch-promotion policy. Pull requests
 require feature/fix → dev → qa → prod → main within this repository; the
-`promotion` check rejects other routes. Repository protection must require these
+`promotion` check rejects other routes. It has a PR-only workflow so a skipped
+push-event job cannot satisfy this required gate. Repository protection must require these
 checks to enforce the policy; a workflow alone cannot prevent direct pushes.
 
 Before pushing, run this same CI workflow with `act` and Docker Engine:
