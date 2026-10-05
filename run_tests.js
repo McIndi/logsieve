@@ -87,6 +87,10 @@ function runTests() {
 
     console.log(`${BOLD}Summary:${RESET}`);
     console.log(`${GREEN}${totalPassed} passed${RESET}`);
+    if (totalPassed + totalFailed === 0) {
+        console.error("No tests executed; refusing an empty successful run.");
+        process.exit(1);
+    }
     if (totalFailed > 0) {
         console.log(`${RED}${totalFailed} failed${RESET}`);
         process.exit(1);
