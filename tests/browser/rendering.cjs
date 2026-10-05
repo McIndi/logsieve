@@ -37,7 +37,7 @@ const cases = [
       page.on('pageerror',e=>errors.push(e.message));
       await page.addInitScript(() => {window.__executed=0;window.ALERT=()=>{window.__executed++;};});
       try {
-        await page.goto(`http://127.0.0.1:${server.address().port}/`);
+        await page.goto(process.env.LOGSIEVE_URL ? process.env.LOGSIEVE_URL.replace(/\/+$/, '') + '/' : `http://127.0.0.1:${server.address().port}/`);
         if(mode === 'legacy') {
           const original=fs.readFileSync(path.join(root,'logsieve.js'),'utf8').match(/function renderPage\(pageData\) \{[\s\S]*?\n\}/)[0];
           await page.evaluate(source => { renderPage = (0,eval)('(' + source + ')'); }, original);
