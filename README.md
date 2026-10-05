@@ -60,6 +60,27 @@ The test serves the app on an ephemeral localhost port and uses headless
 Chromium. On Linux, browser system libraries must also be installed; the matching
 Playwright container image provides them.
 
+### CI and pre-push checks
+
+GitHub Actions runs JavaScript syntax checks, the unit suite, and the Chromium
+rendering regressions on pushes and pull requests. Browser tests use the
+Playwright 1.58.2 image and matching test-only dependency. The browser job follows
+the unit job to limit concurrent resource use.
+
+Before pushing, run this same CI workflow with `act` and Docker Engine:
+
+```sh
+act push -W .github/workflows/ci.yml --concurrent-jobs 1 \
+  -P ubuntu-24.04=node:22-bookworm --container-daemon-socket -
+```
+
+This mapping supplies a local runner; the jobs use their declared containers.
+Use an isolated clean checkout and capture the tested commit and result. A failed
+or unsupported local check must be resolved or explicitly recorded before push;
+GitHub CI is still required because local runners differ from hosted runners.
+The McIndi local SDLC tools additionally save a commit-bound pre-push receipt.
+No runtime npm dependency is added to LogSieve.
+
 ### Using Saved Extractors
 
 1. Click **"+ New Extractor"** to create a regex pattern

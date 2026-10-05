@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    container: node:22-bookworm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check JavaScript syntax
+        run: |
+          node --check shared.js
+          node --check logsieve.js
+          node --check logsieve-worker.js
+          node --check tests/browser/rendering.cjs
+      - name: Run unit tests
+        run: node run_tests.js
+  browser:
+    needs: unit
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+      options: --ipc=host
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install matching test dependency
+        run: npm install --prefix /tmp/logsieve-browser-tools --no-audit --no-fund playwright@1.58.2
+      - name: Run Chromium rendering regressions
+        env:
+          NODE_PATH: /tmp/logsieve-browser-tools/node_modules
+        run: node tests/browser/rendering.cjs
