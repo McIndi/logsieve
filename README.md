@@ -60,6 +60,15 @@ The test serves the app on an ephemeral localhost port and uses headless
 Chromium. On Linux, browser system libraries must also be installed; the matching
 Playwright container image provides them.
 
+To test the same rendering cases against a deployed environment, set
+`LOGSIEVE_URL` to its application URL while keeping the checkout at the deployed
+source SHA (the legacy-renderer case reads source from that checkout):
+
+```sh
+LOGSIEVE_URL=http://192.168.56.22/logsieve/ \
+  NODE_PATH=/tmp/logsieve-browser-tools/node_modules node tests/browser/rendering.cjs
+```
+
 ### CI and pre-push checks
 
 GitHub Actions runs JavaScript syntax checks, the unit suite, and the Chromium
