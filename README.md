@@ -60,6 +60,42 @@ The test serves the app on an ephemeral localhost port and uses headless
 Chromium. On Linux, browser system libraries must also be installed; the matching
 Playwright container image provides them.
 
+To test the same rendering cases against a deployed environment, set
+`LOGSIEVE_URL` to its application URL while keeping the checkout at the deployed
+source SHA (the legacy-renderer case reads source from that checkout):
+
+```sh
+LOGSIEVE_URL=http://192.168.56.22/logsieve/ \
+  NODE_PATH=/tmp/logsieve-browser-tools/node_modules node tests/browser/rendering.cjs
+```
+
+### CI and pre-push checks
+
+GitHub Actions runs JavaScript syntax checks, the unit suite, and the Chromium
+rendering regressions on pushes and pull requests. Browser tests use the
+Playwright 1.58.2 image and matching test-only dependency. The browser job follows
+the unit job to limit concurrent resource use. The unit job also verifies that
+empty test runs fail and exercises the branch-promotion policy. Pull requests
+require feature/fix → dev → qa → prod → main within this repository; the
+`promotion` check rejects other routes. It has a PR-only workflow so a skipped
+push-event job cannot satisfy this required gate. Repository protection must require these
+checks to enforce the policy; a workflow alone cannot prevent direct pushes.
+
+Before pushing, run this same CI workflow with `act` and Docker Engine:
+
+```sh
+act push -W .github/workflows/ci.yml --concurrent-jobs 1 \
+  -P ubuntu-24.04=node:22-bookworm --container-daemon-socket -
+```
+
+This mapping supplies a local runner; the jobs use their declared containers.
+Use an isolated clean checkout and capture the tested commit and result. A failed
+or unsupported required local check blocks push until it is resolved or the
+operator explicitly authorizes a documented exception;
+GitHub CI is still required because local runners differ from hosted runners.
+The McIndi local SDLC tools additionally save a commit-bound pre-push receipt.
+No runtime npm dependency is added to LogSieve.
+
 ### Using Saved Extractors
 
 1. Click **"+ New Extractor"** to create a regex pattern
