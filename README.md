@@ -76,7 +76,8 @@ act push -W .github/workflows/ci.yml --concurrent-jobs 1 \
 
 This mapping supplies a local runner; the jobs use their declared containers.
 Use an isolated clean checkout and capture the tested commit and result. A failed
-or unsupported local check must be resolved or explicitly recorded before push;
+or unsupported required local check blocks push until it is resolved or the
+operator explicitly authorizes a documented exception;
 GitHub CI is still required because local runners differ from hosted runners.
 The McIndi local SDLC tools additionally save a commit-bound pre-push receipt.
 No runtime npm dependency is added to LogSieve.
