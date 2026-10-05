@@ -65,7 +65,11 @@ Playwright container image provides them.
 GitHub Actions runs JavaScript syntax checks, the unit suite, and the Chromium
 rendering regressions on pushes and pull requests. Browser tests use the
 Playwright 1.58.2 image and matching test-only dependency. The browser job follows
-the unit job to limit concurrent resource use.
+the unit job to limit concurrent resource use. The unit job also verifies that
+empty test runs fail and exercises the branch-promotion policy. Pull requests
+require feature/fix → dev → qa → prod → main within this repository; the
+`promotion` check rejects other routes. Repository protection must require these
+checks to enforce the policy; a workflow alone cannot prevent direct pushes.
 
 Before pushing, run this same CI workflow with `act` and Docker Engine:
 
