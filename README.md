@@ -23,12 +23,42 @@ A lightweight, client-side web application for exploring and filtering log files
  - **Columns control** - Show/hide and reorder result table columns (drag to reorder)
 - **Completely offline** - No data leaves your machine, no server required
 
+Log levels, IDs, and timestamp values in the results table are displayed as text, including values
+containing HTML markup or quotes. Standard level colors are preserved. This
+rendering protection does not make deliberately enabled JavaScript transforms
+safe to run on untrusted input.
+
 ## Quick Start
 
 1. Download or clone this repository
 2. Open `index.html` in any modern web browser
 3. Drag and drop a log file or use the "Browse" button
 4. Start filtering and analyzing your logs
+
+### Running Tests
+
+Run the shared-logic tests with Node.js:
+
+```sh
+node run_tests.js
+```
+
+The browser regression imports JSON and CSV through the actual UI and checks
+both results-table renderer definitions. It covers hostile levels, IDs, and timestamps,
+attribute injection, normal level styling, and other displayed fields. Its
+Playwright dependency is for testing only; the application has no runtime
+package dependency. With Node.js and npm available, install it outside the
+repository and run the regression:
+
+```sh
+npm install --prefix /tmp/logsieve-browser-tools playwright@1.58.2
+/tmp/logsieve-browser-tools/node_modules/.bin/playwright install chromium
+NODE_PATH=/tmp/logsieve-browser-tools/node_modules node tests/browser/rendering.cjs
+```
+
+The test serves the app on an ephemeral localhost port and uses headless
+Chromium. On Linux, browser system libraries must also be installed; the matching
+Playwright container image provides them.
 
 ### Using Saved Extractors
 
@@ -304,7 +334,8 @@ This architecture allows seamless transition between offline-only and cloud-sync
 
 LogSieve requires no build process or backend infrastructure:
 
-1. Download the three files (`index.html`, `logsieve.css`, `logsieve.js`)
+1. Download `index.html`, `logsieve.css`, `logsieve.js`, `shared.js`, and
+   `logsieve-worker.js`; keep them together when hosting the app.
 2. Host them on any web server (GitHub Pages, Netlify, etc.)
 3. Or simply open `index.html` directly in a browser
 
